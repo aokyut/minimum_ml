@@ -2,5 +2,8 @@
 name = "minimum_ml"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+authors = ["aokyut <epaperamic@gmail.com>"]
+description = "Experimental Machine Learning Library"
 
 [dependencies]
