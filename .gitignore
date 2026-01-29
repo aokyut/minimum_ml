@@ -1,1 +1,4 @@
 /target
+*.swp
+mnist_train.txt
+mnist_test.txt
