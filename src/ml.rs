@@ -2,6 +2,8 @@ pub mod funcs;
 pub mod ops;
 pub mod optim;
 pub mod params;
+pub mod metrics;
+
 
 #[macro_export]
 macro_rules! sequential {
@@ -197,6 +199,109 @@ impl Tensor {
         match &mut self.data {
             TensorData::F32(v) => v,
             _ => panic!("Tensor is not F32"),
+        }
+    }
+
+    /// Returns the indices of the maximum values along a dimension.
+    /// 
+    /// # Arguments
+    /// * `dim` - If None, returns the index of the global maximum as a scalar tensor.
+    ///          If Some(d), returns the indices of maximum values along dimension d.
+    /// 
+    /// # Examples
+    /// ```
+    /// // Global argmax
+    /// let t = Tensor::new(vec![1.0, 3.0, 2.0], vec![3]);
+    /// let idx = t.argmax(None); // Returns Tensor with value 1.0 (index of max)
+    /// 
+    /// // Argmax along last dimension (typical for classification)
+    /// let t = Tensor::new(vec![0.1, 0.9, 0.3, 0.7], vec![2, 2]);
+    /// let idx = t.argmax(Some(1)); // Returns [1.0, 1.0] (indices per row)
+    /// ```
+    pub fn argmax(&self, dim: Option<usize>) -> Tensor {
+        let data = self.as_f32_slice();
+        
+        match dim {
+            None => {
+                // Global argmax
+                let mut max_idx = 0;
+                let mut max_val = data[0];
+                for (i, &val) in data.iter().enumerate().skip(1) {
+                    if val > max_val {
+                        max_val = val;
+                        max_idx = i;
+                    }
+                }
+                Tensor::new(vec![max_idx as f32], vec![1])
+            }
+            Some(d) => {
+                assert!(d < self.shape.len(), "Dimension {} out of bounds for shape {:?}", d, self.shape);
+                
+                // Calculate strides
+                let mut strides = vec![1; self.shape.len()];
+                for i in (0..self.shape.len() - 1).rev() {
+                    strides[i] = strides[i + 1] * self.shape[i + 1];
+                }
+                
+                let dim_size = self.shape[d];
+                let _dim_stride = strides[d];
+                
+                // Calculate output shape (remove the dimension we're reducing over)
+                let mut out_shape = self.shape.clone();
+                out_shape.remove(d);
+                if out_shape.is_empty() {
+                    out_shape.push(1);
+                }
+                
+                let out_size: usize = out_shape.iter().product();
+                let mut result = vec![0.0; out_size];
+                
+                // Iterate over all possible index combinations
+                for out_idx in 0..out_size {
+                    // Convert flat output index to output coordinates
+                    let mut coords = vec![0; self.shape.len()];
+                    let mut temp_idx = out_idx;
+                    let mut out_dim = 0;
+                    
+                    for i in 0..self.shape.len() {
+                        if i == d {
+                            continue; // Skip the dimension we're reducing
+                        }
+                        let size = if out_dim < out_shape.len() {
+                            out_shape[out_dim]
+                        } else {
+                            1
+                        };
+                        coords[i] = temp_idx % size;
+                        temp_idx /= size;
+                        out_dim += 1;
+                    }
+                    
+                    // Find max along dimension d
+                    let mut max_idx = 0;
+                    let mut max_val = f32::NEG_INFINITY;
+                    
+                    for j in 0..dim_size {
+                        coords[d] = j;
+                        
+                        // Convert coordinates to flat index
+                        let mut flat_idx = 0;
+                        for (k, &coord) in coords.iter().enumerate() {
+                            flat_idx += coord * strides[k];
+                        }
+                        
+                        let val = data[flat_idx];
+                        if val > max_val {
+                            max_val = val;
+                            max_idx = j;
+                        }
+                    }
+                    
+                    result[out_idx] = max_idx as f32;
+                }
+                
+                Tensor::new(result, out_shape)
+            }
         }
     }
 }

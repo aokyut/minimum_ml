@@ -1,22 +1,66 @@
 #![allow(unused)]
 
+use minimum_ml::dataset::{Dataloader, Dataset, Stackable};
 use minimum_ml::ml;
-use minimum_ml::quantize::{
-    funcs::{Dequantize, QReLU, Quantize},
-    params::QuantizedLinear,
-};
 use minimum_ml::utills::rand::get_random_normal;
+use minimum_ml::{
+    ml::Tensor,
+    quantize::{
+        funcs::{Dequantize, QReLU, Quantize},
+        params::QuantizedLinear,
+    },
+};
 use rand::Rng;
 
 fn main() {
     train_mnist();
 }
 
+#[derive(Stackable)]
+pub struct MnistData {
+    x: Tensor,
+    y: Tensor,
+}
+
+pub struct MnistDataset {
+    x_data: Vec<f32>,
+    y_data: Vec<f32>,
+}
+
+impl MnistDataset {
+    fn new(file: &str) -> Self {
+        let (train_images, train_labels) = load_mnist(file);
+        return Self {
+            x_data: train_images,
+            y_data: train_labels,
+        };
+    }
+}
+
+impl Dataset for MnistDataset {
+    type Item = MnistData;
+    fn len(&self) -> usize {
+        return self.y_data.len() / 10;
+    }
+
+    fn get(&self, index: usize) -> Self::Item {
+        let x_tensor = Tensor::new(
+            self.x_data[index * 784..(index + 1) * 784].to_vec(),
+            vec![784],
+        );
+        let y_tensor = Tensor::new(self.y_data[index * 10..(index + 1) * 10].to_vec(), vec![10]);
+        return MnistData {
+            x: x_tensor,
+            y: y_tensor,
+        };
+    }
+}
+
 fn train_mnist() {
     let mut g = ml::Graph::new();
 
     let input = g.push_placeholder();
-    let dequantized3 = minimum_ml::sequential!(
+    let dequantized = minimum_ml::sequential!(
         g,
         input,
         [
@@ -32,7 +76,7 @@ fn train_mnist() {
     );
 
     let target = g.push_placeholder();
-    let loss = g.add_layer(vec![dequantized3, target], Box::new(ml::funcs::MSE::new()));
+    let loss = g.add_layer(vec![dequantized, target], Box::new(ml::funcs::MSE::new()));
 
     g.set_train_mode();
     g.set_inference_mode();
@@ -46,87 +90,97 @@ fn train_mnist() {
 
     g.set_placeholder(vec![input, target]);
 
+    let batch_size = 64;
+    let epoch = 20;
     println!("Loading MNIST...");
-    let (train_images, train_labels) = load_mnist("mnist_train.txt");
-    let n_train = train_images.len() / 784;
-    println!("Loaded {} samples.", n_train);
+    let train_dataloader = Dataloader::new(MnistDataset::new("mnist_train.txt"), batch_size, true);
+    println!("Loaded {} samples.", train_dataloader.len());
+    println!("Loading MNIST test...");
+    let test_dataloader = Dataloader::new(MnistDataset::new("mnist_test.txt"), batch_size, false);
+    println!("Loaded {} samples.", test_dataloader.len());
 
     let mut loss_f32: Option<f32> = None;
     let mut rng = rand::rng();
 
-    let batch = 64;
-    for i in 0..10000 {
-        let mut xs = Vec::with_capacity(batch * 784);
-        let mut ys = Vec::with_capacity(batch * 10);
-        for _ in 0..batch {
-            let idx = rng.random_range(0..n_train);
-            xs.extend_from_slice(&train_images[idx * 784..(idx + 1) * 784]);
-            ys.extend_from_slice(&train_labels[idx * 10..(idx + 1) * 10]);
-        }
+    let mut step = 0;
+    for e in 0..epoch {
+        for batch in train_dataloader.iter_batch() {
+            step += 1;
+            let input_tensor = batch.x;
+            let target_tensor = batch.y;
+            let result = g.forward(vec![input_tensor, target_tensor]);
+            match loss_f32 {
+                Some(loss) => {
+                    loss_f32 = Some(loss * 0.9 + result.as_f32_slice()[0] * 0.1);
+                }
+                None => {
+                    loss_f32 = Some(result.as_f32_slice()[0]);
+                }
+            }
 
-        let target_tensor = ml::Tensor::new(ys, vec![batch, 10]);
-        let input_tensor = ml::Tensor::new(xs, vec![batch, 784]);
-        let result = g.forward(vec![input_tensor, target_tensor]);
-        match loss_f32 {
-            Some(loss) => {
-                loss_f32 = Some(loss * 0.9 + 0.1 * result.as_f32_slice()[0]);
+            if step % 100 == 0 {
+                println!("[{step}]result: {:#?}", loss_f32.unwrap());
             }
-            None => {
-                loss_f32 = Some(result.as_f32_slice()[0]);
-            }
+
+            g.backward();
+            g.optimize();
+            g.reset();
         }
-        if i % 100 == 0 {
-            println!("[{i}]result: {:#?}", loss_f32.unwrap());
+        
+        // Evaluate on test set after each epoch
+        println!("\nEpoch {} - Evaluating...", e + 1);
+        g.set_inference_mode();
+        g.set_target(dequantized);
+        g.set_placeholder(vec![input]);
+        
+        let mut total_acc = 0.0;
+        let mut n_batches = 0;
+        
+        for batch in test_dataloader.iter_batch() {
+            let input_tensor = batch.x;
+            let target_tensor = batch.y;
+            let result = g.forward(vec![input_tensor]);
+            
+            // Calculate accuracy for this batch
+            let acc = ml::metrics::accuracy(&result, &target_tensor);
+            total_acc += acc;
+            n_batches += 1;
+            
+            g.reset();
         }
-        g.backward();
-        g.optimize();
-        g.reset();
+        
+        let avg_acc = total_acc / n_batches as f32;
+        println!("Epoch {} - Test Accuracy: {:.2}%", e + 1, avg_acc * 100.0);
+        
+        // Switch back to training mode
+        g.set_train_mode();
+        g.set_target(loss);
+        g.set_placeholder(vec![input, target]);
     }
 
-    println!("Evaluating...");
-    let (test_images, test_labels) = load_mnist("mnist_test.txt");
-    let n_test = test_images.len() / 784;
-    let mut correct = 0;
-
+    // Final evaluation
+    println!("\n=== Final Evaluation ===");
     g.set_inference_mode();
-    g.set_target(dequantized3);
+    g.set_target(dequantized);
     g.set_placeholder(vec![input]);
-
-    for i in 0..1000 {
-        let x = test_images[i * 784..(i + 1) * 784].to_vec();
-        let y_true = &test_labels[i * 10..(i + 1) * 10];
-
-        let input_tensor = ml::Tensor::new(x, vec![1, 784]);
+    
+    let mut total_acc = 0.0;
+    let mut n_batches = 0;
+    
+    for batch in test_dataloader.iter_batch() {
+        let input_tensor = batch.x;
+        let target_tensor = batch.y;
         let result = g.forward(vec![input_tensor]);
-        let res_slice = result.as_f32_slice();
-
-        let mut max_idx = 0;
-        let mut max_val = res_slice[0];
-        for j in 1..10 {
-            if res_slice[j] > max_val {
-                max_val = res_slice[j];
-                max_idx = j;
-            }
-        }
-
-        let mut true_idx = 0;
-        for j in 0..10 {
-            if y_true[j] > 0.5 {
-                true_idx = j;
-                break;
-            }
-        }
-
-        if max_idx == true_idx {
-            correct += 1;
-        }
+        
+        let acc = ml::metrics::accuracy(&result, &target_tensor);
+        total_acc += acc;
+        n_batches += 1;
+        
         g.reset();
     }
-    println!(
-        "Test Accuracy: {}/1000 ({:.2}%)",
-        correct,
-        (correct as f32 / 10.0)
-    );
+    
+    let final_acc = total_acc / n_batches as f32;
+    println!("Final Test Accuracy: {:.2}%\n", final_acc * 100.0);
 }
 
 fn load_mnist(path: &str) -> (Vec<f32>, Vec<f32>) {

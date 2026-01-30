@@ -70,6 +70,7 @@ dependencies = [
  "rand_distr",
  "serde",
  "serde_json",
+ "stackable_derive",
 ]
 
 [[package]]
@@ -243,6 +244,15 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "stackable_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
