@@ -1,4 +1,5 @@
 #![allow(unused)]
+#![allow(missing_docs)]
 
 use minimum_ml::dataset::{Dataloader, Dataset, Stackable};
 use minimum_ml::ml;
@@ -30,17 +31,17 @@ pub struct MnistDataset {
 impl MnistDataset {
     fn new(file: &str) -> Self {
         let (train_images, train_labels) = load_mnist(file);
-        return Self {
+        Self {
             x_data: train_images,
             y_data: train_labels,
-        };
+        }
     }
 }
 
 impl Dataset for MnistDataset {
     type Item = MnistData;
     fn len(&self) -> usize {
-        return self.y_data.len() / 10;
+        self.y_data.len() / 10
     }
 
     fn get(&self, index: usize) -> Self::Item {
@@ -49,10 +50,10 @@ impl Dataset for MnistDataset {
             vec![784],
         );
         let y_tensor = Tensor::new(self.y_data[index * 10..(index + 1) * 10].to_vec(), vec![10]);
-        return MnistData {
+        MnistData {
             x: x_tensor,
             y: y_tensor,
-        };
+        }
     }
 }
 
@@ -92,7 +93,7 @@ fn train_mnist() {
     g.set_placeholder(vec![input, target]);
 
     let batch_size = 64;
-    let epoch = 20;
+    let epoch = 1;
     println!("Loading MNIST...");
     let train_dataloader = Dataloader::new(MnistDataset::new("mnist_train.txt"), batch_size, true);
     println!("Loaded {} samples.", train_dataloader.len());
@@ -198,6 +199,7 @@ fn train_mnist() {
     }
     
     let final_acc = total_acc / n_batches as f32;
+    g.save("model");
     println!("Final Test Accuracy: {:.2}%\n", final_acc * 100.0);
 }
 
@@ -227,5 +229,5 @@ fn load_mnist(path: &str) -> (Vec<f32>, Vec<f32>) {
 }
 
 fn test_func(x: Vec<f32>) -> f32 {
-    return x[0].sin() + x[1].cos();
+    x[0].sin() + x[1].cos()
 }

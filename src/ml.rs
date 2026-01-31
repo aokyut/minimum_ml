@@ -1,12 +1,31 @@
+/// Binary I/O utilities for model serialization.
+pub(crate) mod binary_io;
+/// Activation functions and loss functions.
 pub mod funcs;
-pub mod ops;
-pub mod optim;
-pub mod params;
-pub mod metrics;
-pub mod progress;
+/// Logging utilities for training (requires `logging` feature).
+#[cfg(feature = "logging")]
 pub mod logger;
+/// Metrics for model evaluation.
+pub mod metrics;
+/// Operations for tensor manipulation.
+pub mod ops;
+/// Optimization algorithms (SGD, Adam, etc.).
+pub mod optim;
+/// Neural network layer parameters and implementations.
+pub mod params;
+/// Progress tracking utilities.
+pub mod progress;
 
-
+/// Macro to create a sequential neural network layer composition.
+///
+/// # Example
+/// ```ignore
+/// let output_id = sequential!(graph, input_id, [
+///     MM::new(784, 128),
+///     ReLU {},
+///     MM::new(128, 10),
+/// ]);
+/// ```
 #[macro_export]
 macro_rules! sequential {
     ($graph:expr, $input:expr, [$($node:expr),* $(,)?]) => {{
@@ -20,21 +39,28 @@ macro_rules! sequential {
 }
 
 use crate::utills::rand::*;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
+
+pub type Result<T> = std::result::Result<T, std::io::Error>;
+
 use std::borrow::Cow;
 use std::fs;
 use std::ops::{Add, AddAssign};
 use std::path::PathBuf;
 
+/// Creates a random vector using Xavier initialization.
+///
+/// # Arguments
+/// * `n` - Input dimension for scaling
+/// * `size` - Size of the output vector
 pub fn xiver_vec(n: usize, size: usize) -> Vec<f32> {
     let sigma = (1.0 / n as f32).sqrt();
-    let ans = get_random_normal(size, 0.0, sigma);
 
-    return ans;
+    get_random_normal(size, 0.0, sigma)
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Data storage for tensors, supporting both f32 and quantized i8 formats.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum TensorData {
     F32(Vec<f32>),
     I8 {
@@ -43,7 +69,9 @@ pub enum TensorData {
     },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Multi-dimensional array for neural network computations.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct Tensor {
     pub data: TensorData,
     pub shape: Vec<usize>,
@@ -56,10 +84,10 @@ impl Tensor {
             size *= s;
         }
         let data = Tensor::create_random_array(size);
-        return Tensor {
+        Tensor {
             data: TensorData::F32(data),
-            shape: shape,
-        };
+            shape,
+        }
     }
 
     pub fn zeros_like(tensor: &Tensor) -> Self {
@@ -67,22 +95,22 @@ impl Tensor {
         match &tensor.data {
             TensorData::F32(_) => {
                 let data = vec![0.0; size];
-                return Tensor {
+                Tensor {
                     data: TensorData::F32(data),
                     shape: tensor.shape.clone(),
-                };
+                }
             }
             TensorData::I8 { scales, .. } => {
                 // Return i8 zeros if it was i8, but usually zeros_like is for grads/accumulators
                 // For simplicity, we fallback to f32 or return i8 with zero scales
                 let data = vec![0i8; size];
-                return Tensor {
+                Tensor {
                     data: TensorData::I8 {
                         data,
                         scales: vec![0.0; scales.len()],
                     },
                     shape: tensor.shape.clone(),
-                };
+                }
             }
         }
     }
@@ -94,20 +122,20 @@ impl Tensor {
         }
         let data = vec![0.0; size];
 
-        return Tensor {
+        Tensor {
             data: TensorData::F32(data),
-            shape: shape,
-        };
+            shape,
+        }
     }
 
     pub fn ones_like(tensor: &Tensor) -> Self {
         let size = tensor.len();
         let data = vec![1.0; size];
 
-        return Tensor {
+        Tensor {
             data: TensorData::F32(data),
             shape: tensor.shape.clone(),
-        };
+        }
     }
 
     pub fn ones(shape: Vec<usize>) -> Self {
@@ -117,10 +145,10 @@ impl Tensor {
         }
         let data = vec![1.0; size];
 
-        return Tensor {
+        Tensor {
             data: TensorData::F32(data),
-            shape: shape,
-        };
+            shape,
+        }
     }
 
     pub fn new(data: Vec<f32>, shape: Vec<usize>) -> Self {
@@ -129,10 +157,10 @@ impl Tensor {
             size *= s;
         }
         assert_eq!(size, data.len());
-        return Tensor {
+        Tensor {
             data: TensorData::F32(data),
-            shape: shape,
-        };
+            shape,
+        }
     }
 
     pub fn new_i8(data: Vec<i8>, scales: Vec<f32>, shape: Vec<usize>) -> Self {
@@ -141,23 +169,21 @@ impl Tensor {
             size *= s;
         }
         assert_eq!(size, data.len());
-        return Tensor {
+        Tensor {
             data: TensorData::I8 { data, scales },
             shape,
-        };
+        }
     }
 
     fn create_random_array(size: usize) -> Vec<f32> {
-        let data = get_random_normal(size, 0.0, 1.0);
-
-        return data;
+        get_random_normal(size, 0.0, 1.0)
     }
 
     pub fn null() -> Self {
-        return Tensor {
+        Tensor {
             data: TensorData::F32(Vec::new()),
             shape: Vec::new(),
-        };
+        }
     }
 
     pub fn get_item(&self) -> Option<f32> {
@@ -178,7 +204,7 @@ impl Tensor {
         }
     }
 
-    pub fn as_f32_slice(&self) -> Cow<[f32]> {
+    pub fn as_f32_slice(&self) -> Cow<'_, [f32]> {
         match &self.data {
             TensorData::F32(v) => Cow::Borrowed(v),
             TensorData::I8 { data, scales } => {
@@ -205,24 +231,24 @@ impl Tensor {
     }
 
     /// Returns the indices of the maximum values along a dimension.
-    /// 
+    ///
     /// # Arguments
     /// * `dim` - If None, returns the index of the global maximum as a scalar tensor.
     ///          If Some(d), returns the indices of maximum values along dimension d.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// // Global argmax
     /// let t = Tensor::new(vec![1.0, 3.0, 2.0], vec![3]);
     /// let idx = t.argmax(None); // Returns Tensor with value 1.0 (index of max)
-    /// 
+    ///
     /// // Argmax along last dimension (typical for classification)
     /// let t = Tensor::new(vec![0.1, 0.9, 0.3, 0.7], vec![2, 2]);
     /// let idx = t.argmax(Some(1)); // Returns [1.0, 1.0] (indices per row)
     /// ```
     pub fn argmax(&self, dim: Option<usize>) -> Tensor {
         let data = self.as_f32_slice();
-        
+
         match dim {
             None => {
                 // Global argmax
@@ -237,34 +263,39 @@ impl Tensor {
                 Tensor::new(vec![max_idx as f32], vec![1])
             }
             Some(d) => {
-                assert!(d < self.shape.len(), "Dimension {} out of bounds for shape {:?}", d, self.shape);
-                
+                assert!(
+                    d < self.shape.len(),
+                    "Dimension {} out of bounds for shape {:?}",
+                    d,
+                    self.shape
+                );
+
                 // Calculate strides
                 let mut strides = vec![1; self.shape.len()];
                 for i in (0..self.shape.len() - 1).rev() {
                     strides[i] = strides[i + 1] * self.shape[i + 1];
                 }
-                
+
                 let dim_size = self.shape[d];
                 let _dim_stride = strides[d];
-                
+
                 // Calculate output shape (remove the dimension we're reducing over)
                 let mut out_shape = self.shape.clone();
                 out_shape.remove(d);
                 if out_shape.is_empty() {
                     out_shape.push(1);
                 }
-                
+
                 let out_size: usize = out_shape.iter().product();
                 let mut result = vec![0.0; out_size];
-                
+
                 // Iterate over all possible index combinations
                 for out_idx in 0..out_size {
                     // Convert flat output index to output coordinates
                     let mut coords = vec![0; self.shape.len()];
                     let mut temp_idx = out_idx;
                     let mut out_dim = 0;
-                    
+
                     for i in 0..self.shape.len() {
                         if i == d {
                             continue; // Skip the dimension we're reducing
@@ -278,36 +309,40 @@ impl Tensor {
                         temp_idx /= size;
                         out_dim += 1;
                     }
-                    
+
                     // Find max along dimension d
                     let mut max_idx = 0;
                     let mut max_val = f32::NEG_INFINITY;
-                    
+
                     for j in 0..dim_size {
                         coords[d] = j;
-                        
+
                         // Convert coordinates to flat index
                         let mut flat_idx = 0;
                         for (k, &coord) in coords.iter().enumerate() {
                             flat_idx += coord * strides[k];
                         }
-                        
+
                         let val = data[flat_idx];
                         if val > max_val {
                             max_val = val;
                             max_idx = j;
                         }
                     }
-                    
+
                     result[out_idx] = max_idx as f32;
                 }
-                
+
                 Tensor::new(result, out_shape)
             }
         }
     }
 }
 
+/// Creates a batched tensor from a vector of tensors.
+///
+/// # Arguments
+/// * `tensors` - Vector of tensors to batch together
 pub fn create_batch(tensors: Vec<Tensor>) -> Tensor {
     let size = tensors[0].len();
     let mut batch_data = Vec::new(); // Fallback to F32 for batch creation
@@ -319,7 +354,7 @@ pub fn create_batch(tensors: Vec<Tensor>) -> Tensor {
         batch_data.extend(tensor.as_f32_slice().iter());
     }
 
-    return Tensor::new(batch_data, shape);
+    Tensor::new(batch_data, shape)
 }
 
 impl Add for Tensor {
@@ -333,7 +368,7 @@ impl Add for Tensor {
             out_data[i] += rhs_data[i];
         }
 
-        return Tensor::new(out_data, self.shape.clone());
+        Tensor::new(out_data, self.shape.clone())
     }
 }
 
@@ -354,6 +389,9 @@ impl AddAssign for Tensor {
     }
 }
 
+/// Trait for neural network layers and operations.
+///
+/// Implementors define forward and backward passes for automatic differentiation.
 pub trait Node {
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, output: &Tensor) -> Vec<Tensor>;
     fn call(&self, input: Vec<Tensor>) -> Tensor;
@@ -363,9 +401,7 @@ pub trait Node {
     fn has_params(&self) -> bool {
         false
     }
-    fn apply_update(&mut self, _update: Vec<Tensor>) {
-        return;
-    }
+    fn apply_update(&mut self, _update: Vec<Tensor>) {}
     fn load_param(&mut self, _file: PathBuf) -> Result<()> {
         Ok(())
     }
@@ -373,37 +409,48 @@ pub trait Node {
         Ok(())
     }
     fn pull_grad(&self) -> Option<Vec<&Tensor>> {
-        return None;
+        None
     }
     fn print(&self) {}
     fn prepare_inference(&mut self) {}
     fn prepare_train(&mut self) {}
 }
 
+/// Trait for optimization algorithms.
 pub trait Optimizer {
     fn optimize(&mut self, tar_id: usize, grads: Vec<&Tensor>) -> Vec<Tensor>;
 }
 
+/// Placeholder node for graph inputs.
 pub struct Placeholder {}
 
 impl Node for Placeholder {
     fn backward(&mut self, _: &Tensor, _: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
-        return vec![];
+        vec![]
     }
     fn call(&self, _: Vec<Tensor>) -> Tensor {
-        return Tensor::null();
+        Tensor::null()
     }
     fn no_grad(&self) -> bool {
         true
     }
 }
 
-impl Placeholder {
-    pub fn new() -> Self {
-        return Placeholder {};
+impl Default for Placeholder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
+impl Placeholder {
+    pub fn new() -> Self {
+        Placeholder {}
+    }
+}
+
+/// Computational graph for automatic differentiation.
+///
+/// Manages forward and backward passes through a network of nodes.
 pub struct Graph {
     pub layers: Vec<Box<dyn Node>>,
     pub optimizer: Option<Box<dyn Optimizer>>,
@@ -417,9 +464,15 @@ pub struct Graph {
     pub is_inference: bool,
 }
 
+impl Default for Graph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Graph {
     pub fn new() -> Self {
-        return Graph {
+        Graph {
             layers: Vec::new(),
             flows: Vec::new(),
             optimizer: None,
@@ -430,7 +483,7 @@ impl Graph {
             output: Vec::new(),
             target: 0,
             is_inference: false,
-        };
+        }
     }
 
     pub fn set_inference_mode(&mut self) {
@@ -449,13 +502,10 @@ impl Graph {
 
     pub fn backward(&mut self) {
         let mut stack: Vec<usize> = vec![self.target];
-        self.backflows[self.target] = Some(Tensor::ones_like(
-            &self.flows[self.target].as_ref().unwrap(),
-        ));
+        self.backflows[self.target] =
+            Some(Tensor::ones_like(self.flows[self.target].as_ref().unwrap()));
 
-        while stack.len() > 0 {
-            let tar = stack.pop().unwrap();
-
+        while let Some(tar) = stack.pop() {
             let input_ids = &self.inputs[tar];
             let mut input_vecs = Vec::new();
             if self.layers[tar].no_grad() {
@@ -498,8 +548,7 @@ impl Graph {
         }
 
         let mut stack: Vec<usize> = vec![self.target];
-        while stack.len() > 0 {
-            let tar = stack.pop().unwrap();
+        while let Some(tar) = stack.pop() {
             stack.push(tar);
             let input_ids = &self.inputs[tar];
             let mut full = true;
@@ -523,12 +572,12 @@ impl Graph {
         }
         let output = flows[self.target].clone().unwrap();
         // println!("{flows:?}");
-        return output.clone();
+        output.clone()
     }
 
     pub fn forward(&mut self, input_vec: Vec<Tensor>) -> Tensor {
         // println!("[g]input:{:?}", input_vec);
-        return self.forward_(self.placeholder.as_ref().unwrap().clone(), input_vec);
+        self.forward_(self.placeholder.as_ref().unwrap().clone(), input_vec)
     }
 
     pub fn forward_(&mut self, placeholder: Vec<usize>, mut input_vec: Vec<Tensor>) -> Tensor {
@@ -541,8 +590,7 @@ impl Graph {
         }
 
         let mut stack: Vec<usize> = vec![self.target];
-        while stack.len() > 0 {
-            let tar = stack.pop().unwrap();
+        while let Some(tar) = stack.pop() {
             stack.push(tar);
             let input_ids = &self.inputs[tar];
             let mut full = true;
@@ -565,8 +613,8 @@ impl Graph {
             self.flows[tar] = Some(out);
             // println!("flows: {:#?}", self.flows);
         }
-        let output = self.flows[self.target].clone().unwrap();
-        return output;
+
+        self.flows[self.target].clone().unwrap()
     }
 
     pub fn optimize(&mut self) {
@@ -579,7 +627,6 @@ impl Graph {
                 let update = optimizer.optimize(id, grads);
                 self.layers[id].apply_update(update);
             }
-            return;
         }
     }
 
@@ -593,7 +640,7 @@ impl Graph {
         let id = self.inputs.len() - 1;
         self.output.push(id);
 
-        return id;
+        id
     }
 
     pub fn add_layer(&mut self, inputs: Vec<usize>, node: Box<dyn Node>) -> usize {
@@ -614,7 +661,7 @@ impl Graph {
 
         self.inputs.push(inputs);
 
-        return id;
+        id
     }
 
     pub fn reset(&mut self) {
@@ -632,14 +679,14 @@ impl Graph {
         self.placeholder = Some(placeholder);
     }
 
-    pub fn save(&self, file: String) {
+    pub fn save(&self, file: &str) {
         let mut path = PathBuf::new();
         path.push(file);
 
         let _ = fs::create_dir_all(path.clone());
 
         for i in 0..self.layers.len() {
-            path.push(format!("{}.json", i));
+            path.push(format!("{}.param", i));
 
             let _ = self.layers[i].save_param(path.clone());
             path = path.parent().unwrap().to_path_buf();
@@ -651,7 +698,7 @@ impl Graph {
         path.push(file);
 
         for i in 0..self.layers.len() {
-            path.push(format!("{}.json", i));
+            path.push(format!("{}.param", i));
 
             let _ = self.layers[i].load_param(path.clone());
             path = path.parent().unwrap().to_path_buf();

@@ -1,6 +1,8 @@
+#[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct IntMM {
     pub d_in: usize,
     pub d_out: usize,

@@ -1,7 +1,34 @@
+#![allow(missing_docs)]
+//! Derive macro for the `Stackable` trait.
+//!
+//! This crate provides a procedural macro to automatically implement the `Stackable` trait
+//! for structs with named fields. The `Stackable` trait allows batching multiple instances
+//! of a type by stacking their fields.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use stackable_derive::Stackable;
+//!
+//! #[derive(Stackable)]
+//! struct MyData {
+//!     values: Vec<f32>,
+//!     labels: Vec<i32>,
+//! }
+//! ```
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
+/// Derives the `Stackable` trait for a struct.
+///
+/// The generated implementation will create a batched version of the struct by
+/// stacking each field using their respective `Stackable` implementations.
+///
+/// # Panics
+///
+/// Panics if applied to non-struct types or structs without named fields.
 #[proc_macro_derive(Stackable)]
 pub fn derive_stackable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

@@ -6,9 +6,15 @@ pub struct Add {
     ignore_grad: bool,
 }
 
+impl Default for Add {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Add {
     pub fn new() -> Self {
-        return Add { ignore_grad: false };
+        Add { ignore_grad: false }
     }
 }
 
@@ -20,7 +26,7 @@ impl Node for Add {
             outs.push(grad.clone());
         }
 
-        return outs;
+        outs
     }
     fn call(&self, inputs: Vec<super::Tensor>) -> super::Tensor {
         let mut out_vec = inputs[0].as_f32_slice().into_owned();
@@ -32,10 +38,10 @@ impl Node for Add {
                 out_vec[j] += in_data[j];
             }
         }
-        return super::Tensor::new(out_vec, inputs[0].shape.clone());
+        super::Tensor::new(out_vec, inputs[0].shape.clone())
     }
     fn no_grad(&self) -> bool {
-        return self.ignore_grad;
+        self.ignore_grad
     }
 }
 
@@ -45,15 +51,15 @@ pub struct MulConst {
 
 impl MulConst {
     pub fn new(c: f32) -> Self {
-        return MulConst { c: c };
+        MulConst { c }
     }
 }
 
 impl SingleShoot for MulConst {
     fn single_forward(&self, x: f32) -> f32 {
-        return self.c * x;
+        self.c * x
     }
     fn single_backward(&self, _: f32, _: f32) -> f32 {
-        return self.c;
+        self.c
     }
 }

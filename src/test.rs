@@ -11,7 +11,7 @@ fn test_linear_benchmark() {
     let n_samples = 1000;
 
     // 1. レイヤーとデータの準備
-    let mut linear = ml::params::Linear::auto(d_in, d_out);
+    let linear = ml::params::Linear::auto(d_in, d_out);
     let xs_f32_raw = (0..n_samples)
         .map(|_| get_random_normal(d_in, 0.0, 1.0))
         .collect::<Vec<_>>();
@@ -161,7 +161,7 @@ fn evaluate_metrics(name: &str, exacts: &[f32], approxs: &[f32], duration_ns: u1
 
 fn generate_structured_data(n: usize, d: usize, latent_d: usize) -> Vec<Vec<f32>> {
     use rand::Rng;
-    let mut rng = rand::rng();
+    let mut rng = rand::thread_rng();
 
     // ランダムな投影行列 [latent_d, d]
     let mut projection = vec![vec![0.0f32; d]; latent_d];

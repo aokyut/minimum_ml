@@ -4,3 +4,4 @@ mnist_train.txt
 mnist_test.txt
 out
 runs
+model

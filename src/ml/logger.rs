@@ -1,3 +1,7 @@
+//! TensorBoard logging support (requires `logging` feature)
+
+#![cfg(feature = "logging")]
+
 use chrono::Local;
 use std::path::PathBuf;
 use tensorboard_rs::summary_writer::SummaryWriter;

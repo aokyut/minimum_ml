@@ -1,5 +1,4 @@
 use crate::ml::{Tensor, TensorData};
-use std::ops::Index;
 
 pub trait Stackable: Sized {
     type Output;
@@ -9,7 +8,7 @@ pub trait Stackable: Sized {
 impl Stackable for Tensor {
     type Output = Tensor;
     fn stack(batch: Vec<Self>) -> Self::Output {
-        assert!(batch.len() > 0, "batch length is 0");
+        assert!(!batch.is_empty(), "batch length is 0");
 
         let mut data = Vec::new();
 
@@ -54,7 +53,7 @@ impl Stackable for Tensor {
         let mut shape = vec![batch.len()];
         shape.extend_from_slice(&batch[0].shape);
 
-        return Tensor::new(data, shape);
+        Tensor::new(data, shape)
     }
 }
 
@@ -76,33 +75,33 @@ where
 
 impl<D: Dataset> Dataloader<D> {
     pub fn new(dataset: D, batch_size: usize, strict_batch_size: bool) -> Self {
-        return Self {
+        Self {
             dataset,
             batch_size,
             strict_batch_size,
-        };
+        }
     }
 
     pub fn iter_batch(&self) -> BatchIterator<'_, D> {
         use rand::seq::SliceRandom;
-        use rand::Rng;
+        
 
         let dataset_size = self.dataset.len();
-        let mut rng = rand::rng();
+        let mut rng = rand::thread_rng();
         let mut indices: Vec<usize> = (0..dataset_size).collect();
 
         indices.shuffle(&mut rng);
 
-        return BatchIterator {
-            dataloader: &self,
+        BatchIterator {
+            dataloader: self,
             strict_batch_size: self.strict_batch_size,
             batch_size: self.batch_size,
-            indices: indices,
-        };
+            indices,
+        }
     }
 
     pub fn len(&self) -> usize {
-        return self.dataset.len();
+        self.dataset.len()
     }
 }
 
@@ -132,7 +131,7 @@ impl<'a, D: Dataset> Iterator for BatchIterator<'a, D> {
 
         let batch = D::Item::stack(v);
 
-        return Some(batch);
+        Some(batch)
     }
 }
 

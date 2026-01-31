@@ -1,12 +1,8 @@
 use super::xiver_vec;
-use super::Node;
-use super::Tensor;
-use super::TensorData;
+use super::{Node, Result, Tensor, TensorData};
 use crate::quantize::int_quantize::IntMM;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+
 pub struct Linear {
     pub w: Tensor,
     pub b: Tensor,
@@ -25,22 +21,22 @@ impl Linear {
 
         let height = w.shape[0];
         let width = w.shape[1];
-        return Self {
-            w: w,
-            b: b,
-            height: height,
-            width: width,
+        Self {
+            w,
+            b,
+            height,
+            width,
             w_grad: None,
             b_grad: None,
             ignore_grad: false,
-        };
+        }
     }
 
     pub fn auto(input_size: usize, output_size: usize) -> Self {
         let weight = xiver_vec(input_size, output_size * input_size);
         let weight = Tensor::new(weight, vec![output_size, input_size]);
         let b = Tensor::zeros(vec![output_size]);
-        return Linear::new(weight, b);
+        Linear::new(weight, b)
     }
 
     pub fn set_ignore(&mut self) {
@@ -58,7 +54,7 @@ impl Node for Linear {
 
         let mut w_grad = Tensor::zeros_like(&self.w);
         let mut b_grad = Tensor::zeros_like(&self.b);
-        let mut input_grad = Tensor::zeros_like(&input);
+        let mut input_grad = Tensor::zeros_like(input);
 
         let grad_data = grad.as_f32_slice();
         let input_data = input.as_f32_slice();
@@ -92,7 +88,7 @@ impl Node for Linear {
             self.b_grad = Some(b_grad);
         }
 
-        return vec![input_grad];
+        vec![input_grad]
     }
 
     fn call(&self, input_vec: Vec<Tensor>) -> Tensor {
@@ -123,7 +119,7 @@ impl Node for Linear {
                 ans_data[offset_ans + i] = sum;
             }
         }
-        return Tensor::new(ans_data, ans_shape);
+        Tensor::new(ans_data, ans_shape)
     }
 
     fn prepare_inference(&mut self) {
@@ -138,10 +134,10 @@ impl Node for Linear {
     }
 
     fn pull_grad(&self) -> Option<Vec<&Tensor>> {
-        return Some(vec![
+        Some(vec![
             self.w_grad.as_ref().unwrap(),
             self.b_grad.as_ref().unwrap(),
-        ]);
+        ])
     }
 
     fn apply_update(&mut self, update: Vec<Tensor>) {
@@ -165,48 +161,48 @@ impl Node for Linear {
         println!("w:{:?}, b:{:?}", self.w, self.b)
     }
 
-    fn save_param(&self, _file: std::path::PathBuf) -> Result<()> {
-        use anyhow::Context;
+    fn save_param(&self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
         use std::fs::File;
-        use std::io::{BufWriter, Write};
+        use std::io::BufWriter;
 
-        let data_str = serde_json::to_string(self).unwrap();
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
 
-        let file = File::create(_file).unwrap();
-        let mut buff_writer: BufWriter<File> = BufWriter::new(file);
+        write_header(&mut writer, TYPE_LINEAR)?;
+        write_tensor_data(&mut writer, self.w.as_f32_slice().as_ref(), &self.w.shape)?;
+        write_tensor_data(&mut writer, self.b.as_f32_slice().as_ref(), &self.b.shape)?;
 
-        buff_writer
-            .write(data_str.as_bytes())
-            .context("write error")?;
-        buff_writer.flush().context("flush error")?;
         Ok(())
     }
 
-    fn load_param(&mut self, _file: std::path::PathBuf) -> Result<()> {
-        use anyhow::Context;
+    fn load_param(&mut self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
         use std::fs::File;
-        use std::io::{BufRead, BufReader};
+        use std::io::BufReader;
 
-        let file = File::open(_file).unwrap();
-        let buff_reader: BufReader<File> = BufReader::new(file);
+        let file = File::open(path)?;
+        let mut reader = BufReader::new(file);
 
-        let mut lines = Vec::new();
+        read_header(&mut reader, TYPE_LINEAR)?;
+        
+        let (w_data, w_shape) = read_tensor_data(&mut reader)?;
+        let (b_data, b_shape) = read_tensor_data(&mut reader)?;
 
-        for line in buff_reader.lines() {
-            // if process here, can save memory
-            lines.push(line.context("read error")?);
-        }
-        let data_str = lines.join("\n");
-        let mut src: Linear = serde_json::from_str(&data_str).unwrap();
-
-        std::mem::swap(&mut self.w, &mut src.w);
-        std::mem::swap(&mut self.b, &mut src.b);
+        self.w = Tensor {
+            data: TensorData::F32(w_data),
+            shape: w_shape,
+        };
+        self.b = Tensor {
+            data: TensorData::F32(b_data),
+            shape: b_shape,
+        };
 
         Ok(())
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct MM {
     pub w: Tensor,
     pub height: usize,
@@ -221,20 +217,20 @@ impl MM {
 
         let height = w.shape[0];
         let width = w.shape[1];
-        return Self {
-            w: w,
-            height: height,
-            width: width,
+        Self {
+            w,
+            height,
+            width,
             w_grad: None,
             ignore_grad: false,
-        };
+        }
     }
 
     pub fn auto(input_size: usize, output_size: usize) -> Self {
         let weight = xiver_vec(output_size, output_size * input_size);
         let weight = Tensor::new(weight, vec![output_size, input_size]);
         // println!("weight:{:#?}, size:{}", weight.shape, weight.data[0]);
-        return MM::new(weight);
+        MM::new(weight)
     }
 
     pub fn set_ignore(&mut self) {
@@ -251,7 +247,7 @@ impl Node for MM {
         let out_features = self.height;
 
         let mut w_grad = Tensor::zeros_like(&self.w);
-        let mut input_grad = Tensor::zeros_like(&input);
+        let mut input_grad = Tensor::zeros_like(input);
 
         let grad_data = grad.as_f32_slice();
         let input_data = input.as_f32_slice();
@@ -277,7 +273,7 @@ impl Node for MM {
             self.w_grad = Some(w_grad);
         }
 
-        return vec![input_grad];
+        vec![input_grad]
     }
 
     fn call(&self, input_vec: Vec<Tensor>) -> Tensor {
@@ -307,7 +303,7 @@ impl Node for MM {
                 ans_data[offset_ans + i] = sum;
             }
         }
-        return Tensor::new(ans_data, ans_shape);
+        Tensor::new(ans_data, ans_shape)
     }
 
     fn prepare_inference(&mut self) {}
@@ -320,7 +316,7 @@ impl Node for MM {
     }
 
     fn pull_grad(&self) -> Option<Vec<&Tensor>> {
-        return Some(vec![self.w_grad.as_ref().unwrap()]);
+        Some(vec![self.w_grad.as_ref().unwrap()])
     }
 
     fn apply_update(&mut self, update: Vec<Tensor>) {
@@ -337,47 +333,41 @@ impl Node for MM {
         println!("w:{:?}", self.w);
     }
 
-    fn save_param(&self, _file: std::path::PathBuf) -> Result<()> {
-        use anyhow::Context;
+    fn save_param(&self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
         use std::fs::File;
-        use std::io::{BufWriter, Write};
+        use std::io::BufWriter;
 
-        let data_str = serde_json::to_string(self).unwrap();
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
 
-        let file = File::create(_file).unwrap();
-        let mut buff_writer: BufWriter<File> = BufWriter::new(file);
+        write_header(&mut writer, TYPE_MM)?;
+        write_tensor_data(&mut writer, self.w.as_f32_slice().as_ref(), &self.w.shape)?;
 
-        buff_writer
-            .write(data_str.as_bytes())
-            .context("write error")?;
-        buff_writer.flush().context("flush error")?;
         Ok(())
     }
 
-    fn load_param(&mut self, _file: std::path::PathBuf) -> Result<()> {
-        use anyhow::Context;
+    fn load_param(&mut self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
         use std::fs::File;
-        use std::io::{BufRead, BufReader};
+        use std::io::BufReader;
 
-        let file = File::open(_file).unwrap();
-        let buff_reader: BufReader<File> = BufReader::new(file);
+        let file = File::open(path)?;
+        let mut reader = BufReader::new(file);
 
-        let mut lines = Vec::new();
-
-        for line in buff_reader.lines() {
-            // if process here, can save memory
-            lines.push(line.context("read error")?);
-        }
-        let data_str = lines.join("\n");
-        let mut src: MM = serde_json::from_str(&data_str).unwrap();
-
-        std::mem::swap(&mut self.w, &mut src.w);
+        read_header(&mut reader, TYPE_MM)?;
+        
+        let (w_data, w_shape) = read_tensor_data(&mut reader)?;
+        self.w = Tensor {
+            data: TensorData::F32(w_data),
+            shape: w_shape,
+        };
 
         Ok(())
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct Bias {
     pub b: Tensor,
     pub b_grad: Option<Tensor>,
@@ -390,17 +380,17 @@ impl Bias {
         assert_eq!(b.shape.len(), 1);
 
         let height = b.shape[0];
-        return Self {
-            b: b,
-            height: height,
+        Self {
+            b,
+            height,
             b_grad: None,
             ignore_grad: false,
-        };
+        }
     }
 
     pub fn auto(output_size: usize) -> Self {
         let b = Tensor::zeros(vec![output_size]);
-        return Bias::new(b);
+        Bias::new(b)
     }
 
     pub fn set_ignore(&mut self) {
@@ -417,7 +407,7 @@ impl Node for Bias {
         assert_eq!(features, self.height);
 
         let mut b_grad = Tensor::zeros_like(&self.b);
-        let input_grad = Tensor::zeros_like(&input);
+        let input_grad = Tensor::zeros_like(input);
 
         let grad_data = grad.as_f32_slice();
         let b_grad_f32 = b_grad.f32_data_mut();
@@ -435,7 +425,7 @@ impl Node for Bias {
             self.b_grad = Some(b_grad);
         }
 
-        return vec![input_grad];
+        vec![input_grad]
     }
 
     fn call(&self, input_vec: Vec<Tensor>) -> Tensor {
@@ -458,7 +448,7 @@ impl Node for Bias {
                 ans_data[offset + i] = input_f32[offset + i] + b_f32[i];
             }
         }
-        return Tensor::new(ans_data, ans_shape);
+        Tensor::new(ans_data, ans_shape)
     }
     fn no_grad(&self) -> bool {
         self.ignore_grad
@@ -469,7 +459,7 @@ impl Node for Bias {
     }
 
     fn pull_grad(&self) -> Option<Vec<&Tensor>> {
-        return Some(vec![self.b_grad.as_ref().unwrap()]);
+        Some(vec![self.b_grad.as_ref().unwrap()])
     }
 
     fn apply_update(&mut self, update: Vec<Tensor>) {
@@ -486,47 +476,41 @@ impl Node for Bias {
         println!("b:{:?}", self.b)
     }
 
-    fn save_param(&self, _file: std::path::PathBuf) -> Result<()> {
-        use anyhow::Context;
+    fn save_param(&self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
         use std::fs::File;
-        use std::io::{BufWriter, Write};
+        use std::io::BufWriter;
 
-        let data_str = serde_json::to_string(self).unwrap();
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
 
-        let file = File::create(_file).unwrap();
-        let mut buff_writer: BufWriter<File> = BufWriter::new(file);
+        write_header(&mut writer, TYPE_BIAS)?;
+        write_tensor_data(&mut writer, self.b.as_f32_slice().as_ref(), &self.b.shape)?;
 
-        buff_writer
-            .write(data_str.as_bytes())
-            .context("write error")?;
-        buff_writer.flush().context("flush error")?;
         Ok(())
     }
 
-    fn load_param(&mut self, _file: std::path::PathBuf) -> Result<()> {
-        use anyhow::Context;
+    fn load_param(&mut self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
         use std::fs::File;
-        use std::io::{BufRead, BufReader};
+        use std::io::BufReader;
 
-        let file = File::open(_file).unwrap();
-        let buff_reader: BufReader<File> = BufReader::new(file);
+        let file = File::open(path)?;
+        let mut reader = BufReader::new(file);
 
-        let mut lines = Vec::new();
-
-        for line in buff_reader.lines() {
-            // if process here, can save memory
-            lines.push(line.context("read error")?);
-        }
-        let data_str = lines.join("\n");
-        let mut src: Bias = serde_json::from_str(&data_str).unwrap();
-
-        std::mem::swap(&mut self.b, &mut src.b);
+        read_header(&mut reader, TYPE_BIAS)?;
+        
+        let (b_data, b_shape) = read_tensor_data(&mut reader)?;
+        self.b = Tensor {
+            data: TensorData::F32(b_data),
+            shape: b_shape,
+        };
 
         Ok(())
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct QuantizedLinear {
     pub w: Tensor,
     pub b: Tensor,
@@ -671,7 +655,7 @@ impl Node for QuantizedLinear {
 
         let mut w_grad = Tensor::zeros_like(&self.w);
         let mut b_grad = Tensor::zeros_like(&self.b);
-        let mut input_grad = Tensor::zeros_like(&input);
+        let mut input_grad = Tensor::zeros_like(input);
 
         let grad_data = grad.as_f32_slice();
         let input_data = input.as_f32_slice();
@@ -712,7 +696,7 @@ impl Node for QuantizedLinear {
             self.b_grad = Some(b_grad);
         }
 
-        return vec![input_grad];
+        vec![input_grad]
     }
 
     fn prepare_inference(&mut self) {
@@ -731,10 +715,10 @@ impl Node for QuantizedLinear {
     }
 
     fn pull_grad(&self) -> Option<Vec<&Tensor>> {
-        return Some(vec![
+        Some(vec![
             self.w_grad.as_ref().unwrap(),
             self.b_grad.as_ref().unwrap(),
-        ]);
+        ])
     }
 
     fn apply_update(&mut self, update: Vec<Tensor>) {
@@ -755,7 +739,7 @@ impl Node for QuantizedLinear {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct QuantizedMM {
     pub w: Tensor,
     pub int_mm: Option<IntMM>,

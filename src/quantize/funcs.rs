@@ -1,17 +1,25 @@
 use crate::ml::Node;
 use crate::ml::{Tensor, TensorData};
+
+#[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct Quantize {
     is_inference: bool,
 }
 
+impl Default for Quantize {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Quantize {
     pub fn new() -> Self {
-        return Quantize {
+        Quantize {
             is_inference: false,
-        };
+        }
     }
 }
 
@@ -72,9 +80,15 @@ impl Node for Quantize {
 
 pub struct Dequantize {}
 
+impl Default for Dequantize {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Dequantize {
     pub fn new() -> Self {
-        return Dequantize {};
+        Dequantize {}
     }
 }
 
@@ -105,12 +119,18 @@ pub struct QReLU {
     is_inference: bool,
 }
 
+impl Default for QReLU {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QReLU {
     pub fn new() -> Self {
-        return QReLU {
+        QReLU {
             ignore_grad: false,
             is_inference: false,
-        };
+        }
     }
 }
 
@@ -125,7 +145,7 @@ impl Node for QReLU {
             igrad_f32[i] = grad_data[i] * input_data[i].signum().max(0.0);
         }
 
-        return vec![igrad];
+        vec![igrad]
     }
     fn call(&self, input: Vec<Tensor>) -> Tensor {
         assert_eq!(input.len(), 1);
@@ -139,7 +159,7 @@ impl Node for QReLU {
                 output_vec[i] = input_data[i].max(0.0);
             }
 
-            return Tensor::new(output_vec, input.shape.clone());
+            Tensor::new(output_vec, input.shape.clone())
         } else {
             match &input[0].data {
                 TensorData::F32(data) => {
@@ -149,7 +169,7 @@ impl Node for QReLU {
                         output_vec[i] = data[i].max(0.0);
                     }
 
-                    return Tensor::new(output_vec, input[0].shape.clone());
+                    Tensor::new(output_vec, input[0].shape.clone())
                 }
                 TensorData::I8 { data, scales } => {
                     let mut output_vec = vec![0i8; data.len()];
@@ -158,7 +178,7 @@ impl Node for QReLU {
                         output_vec[i] = data[i].max(0);
                     }
 
-                    return Tensor::new_i8(output_vec, scales.clone(), input[0].shape.clone());
+                    Tensor::new_i8(output_vec, scales.clone(), input[0].shape.clone())
                 }
             }
         }

@@ -1,6 +1,8 @@
 use super::Node;
 use super::Tensor;
 use super::TensorData;
+
+#[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
 
 pub trait SingleShoot {
@@ -23,7 +25,7 @@ impl<F: SingleShoot> Node for F {
             igrad_f32[i] = grad_data[i] * self.single_backward(input_data[i], output_data[i]);
         }
 
-        return vec![igrad];
+        vec![igrad]
     }
     fn call(&self, input: Vec<Tensor>) -> Tensor {
         assert_eq!(input.len(), 1);
@@ -35,7 +37,7 @@ impl<F: SingleShoot> Node for F {
             output_vec[i] = self.single_forward(input_data[i]);
         }
 
-        return Tensor::new(output_vec, input.shape.clone());
+        Tensor::new(output_vec, input.shape.clone())
     }
 }
 
@@ -72,9 +74,15 @@ pub struct ReLU {
     ignore_grad: bool,
 }
 
+impl Default for ReLU {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReLU {
     pub fn new() -> Self {
-        return ReLU { ignore_grad: false };
+        ReLU { ignore_grad: false }
     }
 }
 
@@ -89,7 +97,7 @@ impl Node for ReLU {
             igrad_f32[i] = grad_data[i] * input_data[i].signum().max(0.0);
         }
 
-        return vec![igrad];
+        vec![igrad]
     }
     fn call(&self, input: Vec<Tensor>) -> Tensor {
         assert_eq!(input.len(), 1);
@@ -101,7 +109,7 @@ impl Node for ReLU {
             output_vec[i] = input_data[i].max(0.0);
         }
 
-        return Tensor::new(output_vec, input.shape.clone());
+        Tensor::new(output_vec, input.shape.clone())
     }
     fn no_grad(&self) -> bool {
         self.ignore_grad
@@ -115,17 +123,17 @@ pub struct LeaklyReLU {
 
 impl LeaklyReLU {
     pub fn new(alpha: f32) -> Self {
-        return LeaklyReLU {
+        LeaklyReLU {
             ignore_grad: false,
-            alpha: alpha,
-        };
+            alpha,
+        }
     }
 
     pub fn default() -> Self {
-        return LeaklyReLU {
+        LeaklyReLU {
             ignore_grad: false,
             alpha: 0.01,
-        };
+        }
     }
 }
 
@@ -144,7 +152,7 @@ impl Node for LeaklyReLU {
             }
         }
 
-        return Tensor::new(output_vec, input.shape.clone());
+        Tensor::new(output_vec, input.shape.clone())
     }
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
         let mut igrad = Tensor::zeros_like(inputs[0]);
@@ -161,7 +169,7 @@ impl Node for LeaklyReLU {
             }
         }
 
-        return vec![igrad];
+        vec![igrad]
     }
     fn no_grad(&self) -> bool {
         self.ignore_grad
@@ -176,14 +184,14 @@ pub struct ClippedReLU {
 impl ClippedReLU {
     pub fn new(ceil: f32) -> Self {
         assert!(ceil > 0.0);
-        return ClippedReLU {
+        ClippedReLU {
             ignore_grad: false,
-            ceil: ceil,
-        };
+            ceil,
+        }
     }
 
     pub fn default() -> Self {
-        return ClippedReLU::new(1.0);
+        ClippedReLU::new(1.0)
     }
 }
 
@@ -197,7 +205,7 @@ impl Node for ClippedReLU {
             output_vec[i] = input_data[i].max(0.0).min(self.ceil);
         }
 
-        return Tensor::new(output_vec, input.shape.clone());
+        Tensor::new(output_vec, input.shape.clone())
     }
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
         let mut igrad = Tensor::zeros_like(inputs[0]);
@@ -216,18 +224,24 @@ impl Node for ClippedReLU {
             }
         }
 
-        return vec![igrad];
+        vec![igrad]
     }
     fn no_grad(&self) -> bool {
-        return self.ignore_grad;
+        self.ignore_grad
     }
 }
 
 pub struct Tanh {}
 
+impl Default for Tanh {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Tanh {
     pub fn new() -> Self {
-        return Tanh {};
+        Tanh {}
     }
 }
 
@@ -247,7 +261,7 @@ pub struct Sigmoid {
 
 impl Sigmoid {
     pub fn new(alpha: f32) -> Self {
-        return Sigmoid { alpha: alpha };
+        Sigmoid { alpha }
     }
 }
 
@@ -256,14 +270,20 @@ impl SingleShoot for Sigmoid {
         self.alpha * y * (1.0 - y)
     }
     fn single_forward(&self, x: f32) -> f32 {
-        let y = 1.0 / (1.0 + (-x * self.alpha).exp());
-        return y;
+        
+        1.0 / (1.0 + (-x * self.alpha).exp())
     }
 }
 
 /// Fast approximation of Sigmoid using Pade approximation
 /// Avoids expensive exp() computation while maintaining good accuracy (<0.1% error)
 pub struct FastSigmoid {}
+
+impl Default for FastSigmoid {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl FastSigmoid {
     pub fn new() -> Self {
@@ -294,6 +314,12 @@ impl SingleShoot for FastSigmoid {
 
 pub struct Softmax {}
 
+
+impl Default for Softmax {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Softmax {
     pub fn new() -> Self {
@@ -330,7 +356,7 @@ impl Node for Softmax {
             }
         }
 
-        return Tensor::new(output_vec, input.shape.clone());
+        Tensor::new(output_vec, input.shape.clone())
     }
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, output: &Tensor) -> Vec<Tensor> {
         let mut igrad = Tensor::zeros_like(inputs[0]);
@@ -352,14 +378,20 @@ impl Node for Softmax {
             }
         }
 
-        return vec![igrad];
+        vec![igrad]
     }
     fn no_grad(&self) -> bool {
-        return false;
+        false
     }
 }
 
 pub struct MSE {}
+
+impl Default for MSE {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl MSE {
     pub fn new() -> Self {
@@ -379,7 +411,7 @@ impl Node for MSE {
             loss += (left[i] - right[i]).powi(2);
         }
 
-        return Tensor::new(vec![loss / left.len() as f32], vec![1]);
+        Tensor::new(vec![loss / left.len() as f32], vec![1])
     }
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
         let mut left = Tensor::zeros_like(inputs[0]);
@@ -395,7 +427,7 @@ impl Node for MSE {
             right_f32[i] = 2.0 * (in_right[i] - in_left[i]) * g / left_f32.len() as f32;
         }
 
-        return vec![left, right];
+        vec![left, right]
     }
     fn no_grad(&self) -> bool {
         false
@@ -408,7 +440,7 @@ pub struct BinaryCrossEntropy {
 
 impl BinaryCrossEntropy {
     pub fn default() -> Self {
-        return BinaryCrossEntropy { eps: 0.001 };
+        BinaryCrossEntropy { eps: 0.001 }
     }
 }
 
@@ -428,7 +460,7 @@ impl Node for BinaryCrossEntropy {
                     - (1.0 - right[i] + self.eps).ln() * (1.0 - right[i]));
         }
 
-        return Tensor::new(vec![loss * scale], vec![1]);
+        Tensor::new(vec![loss * scale], vec![1])
     }
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
         let mut left = Tensor::zeros_like(inputs[0]);
@@ -448,7 +480,7 @@ impl Node for BinaryCrossEntropy {
             right_f32[i] = -(in_left[i].ln() + (1.0 - in_left[i]).ln()) * g * scale;
         }
 
-        return vec![left, right];
+        vec![left, right]
     }
     fn no_grad(&self) -> bool {
         false
@@ -461,6 +493,12 @@ impl Node for BinaryCrossEntropy {
 /// and targets are one-hot encoded labels
 pub struct CrossEntropyLoss {
     eps: f32,
+}
+
+impl Default for CrossEntropyLoss {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CrossEntropyLoss {
@@ -550,9 +588,15 @@ impl Node for CrossEntropyLoss {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct QuantizeNode {
     pub is_inference: bool,
+}
+
+impl Default for QuantizeNode {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl QuantizeNode {
@@ -618,8 +662,14 @@ impl Node for QuantizeNode {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct DequantizeNode {}
+
+impl Default for DequantizeNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl DequantizeNode {
     pub fn new() -> Self {

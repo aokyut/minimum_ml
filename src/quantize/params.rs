@@ -1,13 +1,11 @@
 use crate::{
     ml::{
         params::{Linear, MM},
-        xiver_vec, Node, Tensor, TensorData,
+        xiver_vec, Node, Result, Tensor, TensorData,
     },
     quantize::int_quantize::IntMM,
 };
-use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
 pub struct QuantizedLinear {
     pub w: Tensor,
     pub b: Tensor,
@@ -152,7 +150,7 @@ impl Node for QuantizedLinear {
 
         let mut w_grad = Tensor::zeros_like(&self.w);
         let mut b_grad = Tensor::zeros_like(&self.b);
-        let mut input_grad = Tensor::zeros_like(&input);
+        let mut input_grad = Tensor::zeros_like(input);
 
         let grad_data = grad.as_f32_slice();
         let input_data = input.as_f32_slice();
@@ -193,7 +191,7 @@ impl Node for QuantizedLinear {
             self.b_grad = Some(b_grad);
         }
 
-        return vec![input_grad];
+        vec![input_grad]
     }
 
     fn prepare_inference(&mut self) {
@@ -212,10 +210,10 @@ impl Node for QuantizedLinear {
     }
 
     fn pull_grad(&self) -> Option<Vec<&Tensor>> {
-        return Some(vec![
+        Some(vec![
             self.w_grad.as_ref().unwrap(),
             self.b_grad.as_ref().unwrap(),
-        ]);
+        ])
     }
 
     fn apply_update(&mut self, update: Vec<Tensor>) {
@@ -234,9 +232,48 @@ impl Node for QuantizedLinear {
         self.w_grad = None;
         self.b_grad = None;
     }
+    fn save_param(&self, path: std::path::PathBuf) -> Result<()> {
+        use crate::ml::binary_io::*;
+        use std::fs::File;
+        use std::io::BufWriter;
+
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+
+        write_header(&mut writer, TYPE_QUANTIZED_LINEAR)?;
+        write_tensor_data(&mut writer, self.w.as_f32_slice().as_ref(), &self.w.shape)?;
+        write_tensor_data(&mut writer, self.b.as_f32_slice().as_ref(), &self.b.shape)?;
+
+        Ok(())
+    }
+
+    fn load_param(&mut self, path: std::path::PathBuf) -> Result<()> {
+        use crate::ml::binary_io::*;
+        use std::fs::File;
+        use std::io::BufReader;
+
+        let file = File::open(path)?;
+        let mut reader = BufReader::new(file);
+
+        read_header(&mut reader, TYPE_QUANTIZED_LINEAR)?;
+
+        let (w_data, w_shape) = read_tensor_data(&mut reader)?;
+        let (b_data, b_shape) = read_tensor_data(&mut reader)?;
+
+        self.w = crate::ml::Tensor {
+            data: crate::ml::TensorData::F32(w_data),
+            shape: w_shape,
+        };
+        self.b = crate::ml::Tensor {
+            data: crate::ml::TensorData::F32(b_data),
+            shape: b_shape,
+        };
+
+        Ok(())
+    }
 }
 
-#[derive(Serialize, Deserialize)]
+
 pub struct QuantizedMM {
     pub w: Tensor,
     pub int_mm: Option<IntMM>,

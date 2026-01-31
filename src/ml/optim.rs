@@ -8,7 +8,7 @@ pub struct SGD {
 
 impl SGD {
     pub fn new(alpha: f32) -> Self {
-        return Self { alpha: alpha };
+        Self { alpha }
     }
 }
 
@@ -26,7 +26,7 @@ impl Optimizer for SGD {
             ans_vec.push(ans);
         }
 
-        return ans_vec;
+        ans_vec
     }
 }
 
@@ -39,11 +39,11 @@ pub struct MomentumSGD {
 impl MomentumSGD {
     // TODO
     pub fn new(alpha: f32, beta: f32) -> Self {
-        return MomentumSGD {
-            alpha: alpha,
-            beta: beta,
+        MomentumSGD {
+            alpha,
+            beta,
             logs: HashMap::new(),
-        };
+        }
     }
 }
 
@@ -73,7 +73,7 @@ impl Optimizer for MomentumSGD {
                 vn_.push(vni_);
             }
             self.logs.entry(tar_id).and_modify(|e| *e = vn_);
-            return w;
+            w
         } else {
             let mut w = Vec::new();
             let mut vn: Vec<Tensor> = Vec::new();
@@ -94,7 +94,7 @@ impl Optimizer for MomentumSGD {
                 w.push(wi);
             }
             self.logs.insert(tar_id, vn);
-            return w;
+            w
         }
     }
 }
@@ -108,33 +108,33 @@ pub struct RMSProp {
 
 impl RMSProp {
     pub fn new(alpha: f32, beta: f32) -> Self {
-        return RMSProp {
+        RMSProp {
             alpha,
             beta,
             epsilon: 1e-8,
             v: HashMap::new(),
-        };
+        }
     }
 
     pub fn with_epsilon(alpha: f32, beta: f32, epsilon: f32) -> Self {
-        return RMSProp {
+        RMSProp {
             alpha,
             beta,
             epsilon,
             v: HashMap::new(),
-        };
+        }
     }
 }
 
 impl Optimizer for RMSProp {
     fn optimize(&mut self, tar_id: usize, grads: Vec<&Tensor>) -> Vec<Tensor> {
-        if !self.v.contains_key(&tar_id) {
+        self.v.entry(tar_id).or_insert_with(|| {
             let mut initial_v = Vec::new();
             for grad in &grads {
                 initial_v.push(Tensor::zeros_like(grad));
             }
-            self.v.insert(tar_id, initial_v);
-        }
+            initial_v
+        });
 
         let vs = self.v.get_mut(&tar_id).unwrap();
         let mut updates = Vec::new();
@@ -155,7 +155,7 @@ impl Optimizer for RMSProp {
             updates.push(update);
         }
 
-        return updates;
+        updates
     }
 }
 
@@ -171,7 +171,7 @@ pub struct Adam {
 
 impl Adam {
     pub fn new(alpha: f32, beta1: f32, beta2: f32) -> Self {
-        return Adam {
+        Adam {
             alpha,
             beta1,
             beta2,
@@ -179,11 +179,11 @@ impl Adam {
             m: HashMap::new(),
             v: HashMap::new(),
             t: HashMap::new(),
-        };
+        }
     }
 
     pub fn with_epsilon(alpha: f32, beta1: f32, beta2: f32, epsilon: f32) -> Self {
-        return Adam {
+        Adam {
             alpha,
             beta1,
             beta2,
@@ -191,20 +191,20 @@ impl Adam {
             m: HashMap::new(),
             v: HashMap::new(),
             t: HashMap::new(),
-        };
+        }
     }
 }
 
 impl Optimizer for Adam {
     fn optimize(&mut self, tar_id: usize, grads: Vec<&Tensor>) -> Vec<Tensor> {
-        if !self.m.contains_key(&tar_id) {
+        if let std::collections::hash_map::Entry::Vacant(e) = self.m.entry(tar_id) {
             let mut initial_m = Vec::new();
             let mut initial_v = Vec::new();
             for grad in &grads {
                 initial_m.push(Tensor::zeros_like(grad));
                 initial_v.push(Tensor::zeros_like(grad));
             }
-            self.m.insert(tar_id, initial_m);
+            e.insert(initial_m);
             self.v.insert(tar_id, initial_v);
             self.t.insert(tar_id, 0);
         }
@@ -240,7 +240,7 @@ impl Optimizer for Adam {
             updates.push(update);
         }
 
-        return updates;
+        updates
     }
 }
 

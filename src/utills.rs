@@ -28,32 +28,48 @@ pub fn half_imcomplete_beta_func(gamma: f64, delta: f64) -> f64 {
         a = (a * (i as f64) + c0) / (gamma + delta + 1.0 - i as f64);
     }
 
-    return a;
+    a
 }
 
 pub mod rand {
     use rand::prelude::*;
     pub fn get_random_usize() -> usize {
-        let mut rng = rand::rng();
-        return rng.random::<u64>() as usize;
+        let mut rng = rand::thread_rng();
+        rng.random::<u64>() as usize
     }
     pub fn get_random_usizes(size: usize) -> Vec<usize> {
         let mut v = vec![0; size];
-        let mut rng = rand::rng();
+        let mut rng = rand::thread_rng();
         for i in 0..size {
             v[i] = rng.random::<u64>() as usize;
         }
-        return v;
+        v
     }
     pub fn get_random_normal(size: usize, mu: f32, sigma: f32) -> Vec<f32> {
-        use rand_distr::{Distribution, Normal};
-        let mut rng = rand::rng();
-        let normal = Normal::new(mu, sigma).unwrap();
-        let mut ans = Vec::new();
-        for _ in 0..size {
-            ans.push(normal.sample(&mut rng));
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let mut ans = Vec::with_capacity(size);
+        
+        // Box-Muller変換で正規分布を生成
+        let mut i = 0;
+        while i < size {
+            let u1: f32 = rng.r#gen();
+            let u2: f32 = rng.r#gen();
+            
+            // 2つの独立な正規分布乱数を生成
+            let z0 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos();
+            let z1 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).sin();
+            
+            ans.push(mu + sigma * z0);
+            i += 1;
+            
+            if i < size {
+                ans.push(mu + sigma * z1);
+                i += 1;
+            }
         }
-        return ans;
+        
+        ans
     }
 
     pub struct RandUsizeGenerator {
@@ -63,7 +79,7 @@ pub mod rand {
     impl Iterator for RandUsizeGenerator {
         type Item = usize;
         fn next(&mut self) -> Option<usize> {
-            return Some(self.rng.random::<u64>() as usize);
+            Some(self.rng.random::<u64>() as usize)
         }
     }
 }
