@@ -17,3 +17,6 @@ rand_distr = "0.5.1"
 serde = { version = "= 1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 stackable_derive = { path = "./stackable_derive" }
+indicatif = "0.17"
+tensorboard-rs = "0.5"
+chrono = "0.4"

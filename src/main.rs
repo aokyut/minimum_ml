@@ -57,6 +57,7 @@ impl Dataset for MnistDataset {
 }
 
 fn train_mnist() {
+    use minimum_ml::ml::logger::TensorBoardLogger;
     let mut g = ml::Graph::new();
 
     let input = g.push_placeholder();
@@ -76,7 +77,7 @@ fn train_mnist() {
     );
 
     let target = g.push_placeholder();
-    let loss = g.add_layer(vec![dequantized, target], Box::new(ml::funcs::MSE::new()));
+    let loss = g.add_layer(vec![dequantized, target], Box::new(ml::funcs::CrossEntropyLoss::new()));
 
     g.set_train_mode();
     g.set_inference_mode();
@@ -102,13 +103,15 @@ fn train_mnist() {
     let mut loss_f32: Option<f32> = None;
     let mut rng = rand::rng();
 
+    let mut logger = TensorBoardLogger::new();
+
     let mut step = 0;
     for e in 0..epoch {
         for batch in train_dataloader.iter_batch() {
             step += 1;
             let input_tensor = batch.x;
             let target_tensor = batch.y;
-            let result = g.forward(vec![input_tensor, target_tensor]);
+            let result = g.forward(vec![input_tensor.clone(), target_tensor.clone()]);
             match loss_f32 {
                 Some(loss) => {
                     loss_f32 = Some(loss * 0.9 + result.as_f32_slice()[0] * 0.1);
@@ -118,9 +121,23 @@ fn train_mnist() {
                 }
             }
 
+            logger.log_scalar("train/loss", loss_f32.unwrap());
+            
             if step % 100 == 0 {
-                println!("[{step}]result: {:#?}", loss_f32.unwrap());
+                g.set_inference_mode();
+                g.set_target(dequantized);
+                g.set_placeholder(vec![input]);
+                let result = g.forward(vec![input_tensor.clone()]);
+                let accuracy = ml::metrics::accuracy(&result, &target_tensor);
+                logger.log_scalar("train/accuracy", accuracy);
+                
+                println!("[{step}]loss: {:#?}, accuracy: {:#?}", loss_f32.unwrap(), accuracy);
+                
+                g.set_train_mode();
+                g.set_target(loss);
+                g.set_placeholder(vec![input, target]);
             }
+            logger.next_step();
 
             g.backward();
             g.optimize();
@@ -128,7 +145,7 @@ fn train_mnist() {
         }
         
         // Evaluate on test set after each epoch
-        println!("\nEpoch {} - Evaluating...", e + 1);
+        // println!("\nEpoch {} - Evaluating...", e + 1);
         g.set_inference_mode();
         g.set_target(dequantized);
         g.set_placeholder(vec![input]);
@@ -151,7 +168,8 @@ fn train_mnist() {
         
         let avg_acc = total_acc / n_batches as f32;
         println!("Epoch {} - Test Accuracy: {:.2}%", e + 1, avg_acc * 100.0);
-        
+        logger.log_scalar("eval/accuracy", avg_acc);   
+
         // Switch back to training mode
         g.set_train_mode();
         g.set_target(loss);

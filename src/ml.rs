@@ -3,6 +3,8 @@ pub mod ops;
 pub mod optim;
 pub mod params;
 pub mod metrics;
+pub mod progress;
+pub mod logger;
 
 
 #[macro_export]
