@@ -2,6 +2,9 @@
 name = "stackable_derive"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+authors = ["aokyut <epaperamic@gmail.com>"]
+description = "Process Macro For Experimental Machine Learning Library"
 
 [lib]
 proc-macro = true

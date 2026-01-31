@@ -3,11 +3,12 @@ members = [".", "stackable_derive"]
 
 [package]
 name = "minimum_ml"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 authors = ["aokyut <epaperamic@gmail.com>"]
 description = "Experimental Machine Learning Library"
+repository = "https://github.com/aokyut/minimum_ml"
 
 [dependencies]
 anyhow = "1.0.100"
@@ -16,7 +17,7 @@ rand = "0.9.2"
 rand_distr = "0.5.1"
 serde = { version = "= 1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
-stackable_derive = { path = "./stackable_derive" }
+stackable_derive = { version = "0.1.0", path = "./stackable_derive" }
 indicatif = "0.17"
 tensorboard-rs = "0.5"
 chrono = "0.4"
