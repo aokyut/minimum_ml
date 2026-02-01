@@ -11,7 +11,7 @@ use minimum_ml::{
         params::QuantizedLinear,
     },
 };
-use rand::Rng;
+
 
 fn main() {
     train_mnist();
@@ -93,7 +93,7 @@ fn train_mnist() {
     g.set_placeholder(vec![input, target]);
 
     let batch_size = 64;
-    let epoch = 1;
+    let epoch = 20;
     println!("Loading MNIST...");
     let train_dataloader = Dataloader::new(MnistDataset::new("mnist_train.txt"), batch_size, true);
     println!("Loaded {} samples.", train_dataloader.len());
@@ -102,9 +102,9 @@ fn train_mnist() {
     println!("Loaded {} samples.", test_dataloader.len());
 
     let mut loss_f32: Option<f32> = None;
-    let mut rng = rand::rng();
 
-    let mut logger = TensorBoardLogger::new();
+
+    let mut logger = TensorBoardLogger::new().unwrap();
 
     let mut step = 0;
     for e in 0..epoch {
@@ -122,7 +122,7 @@ fn train_mnist() {
                 }
             }
 
-            logger.log_scalar("train/loss", loss_f32.unwrap());
+            logger.log_scalar("train/loss", loss_f32.unwrap()).unwrap();
             
             if step % 100 == 0 {
                 g.set_inference_mode();
@@ -130,7 +130,7 @@ fn train_mnist() {
                 g.set_placeholder(vec![input]);
                 let result = g.forward(vec![input_tensor.clone()]);
                 let accuracy = ml::metrics::accuracy(&result, &target_tensor);
-                logger.log_scalar("train/accuracy", accuracy);
+                logger.log_scalar("train/accuracy", accuracy).unwrap();
                 
                 println!("[{step}]loss: {:#?}, accuracy: {:#?}", loss_f32.unwrap(), accuracy);
                 
@@ -169,7 +169,7 @@ fn train_mnist() {
         
         let avg_acc = total_acc / n_batches as f32;
         println!("Epoch {} - Test Accuracy: {:.2}%", e + 1, avg_acc * 100.0);
-        logger.log_scalar("eval/accuracy", avg_acc);   
+        logger.log_scalar("eval/accuracy", avg_acc).unwrap();   
 
         // Switch back to training mode
         g.set_train_mode();

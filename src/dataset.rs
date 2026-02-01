@@ -83,14 +83,11 @@ impl<D: Dataset> Dataloader<D> {
     }
 
     pub fn iter_batch(&self) -> BatchIterator<'_, D> {
-        use rand::seq::SliceRandom;
-        
-
         let dataset_size = self.dataset.len();
-        let mut rng = rand::thread_rng();
         let mut indices: Vec<usize> = (0..dataset_size).collect();
 
-        indices.shuffle(&mut rng);
+        use crate::utills::rand::RngCore;
+        crate::utills::rand::rng().shuffle(&mut indices);
 
         BatchIterator {
             dataloader: self,

@@ -160,21 +160,21 @@ fn evaluate_metrics(name: &str, exacts: &[f32], approxs: &[f32], duration_ns: u1
 }
 
 fn generate_structured_data(n: usize, d: usize, latent_d: usize) -> Vec<Vec<f32>> {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
+    use crate::utills::rand::{rng, RngCore};
+    let mut rng = rng();
 
     // ランダムな投影行列 [latent_d, d]
     let mut projection = vec![vec![0.0f32; d]; latent_d];
     for i in 0..latent_d {
         for j in 0..d {
-            projection[i][j] = rng.random::<f32>() - 0.5;
+            projection[i][j] = rng.gen_f32() - 0.5;
         }
     }
 
     let mut xs = Vec::with_capacity(n);
     for _ in 0..n {
         // 低次元の潜在ベクトルを生成
-        let latent: Vec<f32> = (0..latent_d).map(|_| rng.random::<f32>() - 0.5).collect();
+        let latent: Vec<f32> = (0..latent_d).map(|_| rng.gen_f32() - 0.5).collect();
 
         // 高次元に投影
         let mut x = vec![0.0f32; d];
@@ -186,7 +186,7 @@ fn generate_structured_data(n: usize, d: usize, latent_d: usize) -> Vec<Vec<f32>
 
         // ノイズを少し加える
         for j in 0..d {
-            x[j] += (rng.random::<f32>() - 0.5) * 0.05;
+            x[j] += (rng.gen_f32() - 0.5) * 0.05;
         }
 
         xs.push(x);
