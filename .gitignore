@@ -5,3 +5,5 @@ mnist_test.txt
 out
 runs
 model
+*.log
+

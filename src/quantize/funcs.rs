@@ -1,10 +1,7 @@
 use crate::ml::Node;
 use crate::ml::{Tensor, TensorData};
 
-#[cfg(feature = "serialization")]
-use serde::{Deserialize, Serialize};
 
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct Quantize {
     is_inference: bool,
 }

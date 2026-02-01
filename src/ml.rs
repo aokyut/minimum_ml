@@ -60,7 +60,6 @@ pub fn xiver_vec(n: usize, size: usize) -> Vec<f32> {
 
 /// Data storage for tensors, supporting both f32 and quantized i8 formats.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum TensorData {
     F32(Vec<f32>),
     I8 {
@@ -71,7 +70,6 @@ pub enum TensorData {
 
 /// Multi-dimensional array for neural network computations.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct Tensor {
     pub data: TensorData,
     pub shape: Vec<usize>,

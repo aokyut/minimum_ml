@@ -2,8 +2,6 @@ use super::Node;
 use super::Tensor;
 use super::TensorData;
 
-#[cfg(feature = "serialization")]
-use serde::{Deserialize, Serialize};
 
 pub trait SingleShoot {
     fn single_forward(&self, x: f32) -> f32;
@@ -588,7 +586,6 @@ impl Node for CrossEntropyLoss {
     }
 }
 
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct QuantizeNode {
     pub is_inference: bool,
 }
@@ -662,7 +659,6 @@ impl Node for QuantizeNode {
     }
 }
 
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct DequantizeNode {}
 
 impl Default for DequantizeNode {

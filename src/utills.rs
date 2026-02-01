@@ -33,7 +33,6 @@ pub fn half_imcomplete_beta_func(gamma: f64, delta: f64) -> f64 {
 
 pub mod rand {
     use std::cell::RefCell;
-    use std::sync::Once;
 
     // Xorshift64 implementation
     pub struct XorShift64 {

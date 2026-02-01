@@ -1,8 +1,7 @@
-#[cfg(feature = "serialization")]
-use serde::{Deserialize, Serialize};
+
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
+
 pub struct IntMM {
     pub d_in: usize,
     pub d_out: usize,
@@ -97,7 +96,7 @@ impl IntMM {
     pub unsafe fn dot_product_i8_avx2(a: &[i8], b: &[i8]) -> i32 {
         let n = a.len();
         let mut chunk_idx = 0;
-        let mut sum_vec = unsafe { _mm256_setzero_si256() };
+        let mut sum_vec = _mm256_setzero_si256();
 
         while chunk_idx + 32 <= n {
             let (va, vb) = unsafe {
@@ -107,16 +106,14 @@ impl IntMM {
                 )
             };
 
-            let (va_lo, vb_lo, va_hi, vb_hi) = unsafe {
-                (
-                    _mm256_cvtepi8_epi16(_mm256_extracti128_si256(va, 0)),
-                    _mm256_cvtepi8_epi16(_mm256_extracti128_si256(vb, 0)),
-                    _mm256_cvtepi8_epi16(_mm256_extracti128_si256(va, 1)),
-                    _mm256_cvtepi8_epi16(_mm256_extracti128_si256(vb, 1)),
-                )
-            };
+            let (va_lo, vb_lo, va_hi, vb_hi) = (
+                _mm256_cvtepi8_epi16(_mm256_extracti128_si256(va, 0)),
+                _mm256_cvtepi8_epi16(_mm256_extracti128_si256(vb, 0)),
+                _mm256_cvtepi8_epi16(_mm256_extracti128_si256(va, 1)),
+                _mm256_cvtepi8_epi16(_mm256_extracti128_si256(vb, 1)),
+            );
 
-            sum_vec = unsafe {
+            sum_vec = {
                 let s = _mm256_add_epi32(sum_vec, _mm256_madd_epi16(va_lo, vb_lo));
                 _mm256_add_epi32(s, _mm256_madd_epi16(va_hi, vb_hi))
             };
@@ -137,7 +134,7 @@ impl IntMM {
     #[target_feature(enable = "avx2")]
     pub unsafe fn quantize_f32_i8_avx2(input: &[f32], scale: f32, output: &mut [i8]) {
         let n = input.len();
-        let scale_vec = unsafe { _mm256_set1_ps(scale) };
+        let scale_vec = _mm256_set1_ps(scale);
         let mut i = 0;
 
         while i + 8 <= n {

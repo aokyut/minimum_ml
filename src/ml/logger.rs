@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct TensorBoardLogger {
     writer: BufWriter<File>,
     step: usize,
-    log_dir: PathBuf,
+    _log_dir: PathBuf,
 }
 
 impl TensorBoardLogger {
@@ -46,7 +46,7 @@ impl TensorBoardLogger {
         Ok(Self { 
             writer, 
             step: 0,
-            log_dir: log_dir.to_path_buf(),
+            _log_dir: log_dir.to_path_buf(),
         })
     }
 

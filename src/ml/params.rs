@@ -202,7 +202,6 @@ impl Node for Linear {
     }
 }
 
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct MM {
     pub w: Tensor,
     pub height: usize,
@@ -367,7 +366,6 @@ impl Node for MM {
     }
 }
 
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct Bias {
     pub b: Tensor,
     pub b_grad: Option<Tensor>,
@@ -510,7 +508,6 @@ impl Node for Bias {
     }
 }
 
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct QuantizedLinear {
     pub w: Tensor,
     pub b: Tensor,
@@ -739,7 +736,6 @@ impl Node for QuantizedLinear {
     }
 }
 
-#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct QuantizedMM {
     pub w: Tensor,
     pub int_mm: Option<IntMM>,

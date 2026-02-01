@@ -159,6 +159,7 @@ fn evaluate_metrics(name: &str, exacts: &[f32], approxs: &[f32], duration_ns: u1
     println!("====================================\n");
 }
 
+#[allow(dead_code)]
 fn generate_structured_data(n: usize, d: usize, latent_d: usize) -> Vec<Vec<f32>> {
     use crate::utills::rand::{rng, RngCore};
     let mut rng = rng();

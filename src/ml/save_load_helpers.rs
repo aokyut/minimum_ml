@@ -1,5 +1,4 @@
 // Helper module for conditional serialization
-#[cfg(not(feature = "serialization"))]
 mod save_load_helpers {
     use super::Result;
     use std::path::PathBuf;
