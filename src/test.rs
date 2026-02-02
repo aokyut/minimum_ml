@@ -2,7 +2,13 @@ use crate::ml::{self, Node, Tensor};
 
 #[test]
 fn test_linear_benchmark() {
-    use crate::ml::funcs::QuantizeNode;
+    use crate::quantize::{
+        params::QuantizedLinear,
+        funcs::{
+            Quantize,
+            Dequantize,
+        },
+    };
     use crate::utills::rand::get_random_normal;
     use std::time::Instant;
 
@@ -10,7 +16,7 @@ fn test_linear_benchmark() {
     let d_out = 128;
     let n_samples = 1000;
 
-    // 1. レイヤーとデータの準備
+    // 1. prepare linear layer
     let linear = ml::params::Linear::auto(d_in, d_out);
     let xs_f32_raw = (0..n_samples)
         .map(|_| get_random_normal(d_in, 0.0, 1.0))
@@ -29,12 +35,12 @@ fn test_linear_benchmark() {
     let baseline_data = out_f32.as_f32_slice().to_vec();
 
     // 3. Step 2: quantize Mode setup (using specialized layers)
-    let mut q_linear = ml::params::QuantizedLinear::from_linear(&linear);
+    let mut q_linear = QuantizedLinear::from_linear(&linear);
     // q_linear.prepare_inference_with_calib(Some(&input_tensor));
     q_linear.prepare_inference();
-    let mut q_node = QuantizeNode::new();
+    let mut q_node = Quantize::new();
     q_node.prepare_inference();
-    let dq_node = ml::funcs::DequantizeNode::new();
+    let dq_node = Dequantize::new();
 
     // 4. Step 3: Online quantize of Input
     let start_quant = Instant::now();

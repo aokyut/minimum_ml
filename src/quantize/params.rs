@@ -112,14 +112,11 @@ impl Node for QuantizedLinear {
 
         // Fallback to F32 if IntMM is not prepared
         let input_f32 = input.as_f32_slice();
-        let shape_size = input.shape.len();
-        let batch = if shape_size > 1 {
-            input.shape[shape_size - 2]
-        } else {
-            1
-        };
         let in_features = *input.shape.last().unwrap();
         let out_features = self.w.shape[0];
+
+        // Calculate batch size by flattening all dimensions except the last
+        let batch = input_f32.len() / in_features;
 
         let mut ans_shape = input.shape.clone();
         *ans_shape.last_mut().unwrap() = out_features;
@@ -143,10 +140,12 @@ impl Node for QuantizedLinear {
 
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
         let input = inputs[0];
-        let shape_size = input.shape.len();
-        let batch = input.shape[shape_size - 2];
         let in_features = *input.shape.last().unwrap();
         let out_features = self.height;
+
+        // Calculate batch size by flattening all dimensions except the last
+        let input_data = input.as_f32_slice();
+        let batch = input_data.len() / in_features;
 
         let mut w_grad = Tensor::zeros_like(&self.w);
         let mut b_grad = Tensor::zeros_like(&self.b);
@@ -350,14 +349,11 @@ impl Node for QuantizedMM {
 
         // Fallback to F32
         let input_f32 = input.as_f32_slice();
-        let shape_size = input.shape.len();
-        let batch = if shape_size > 1 {
-            input.shape[shape_size - 2]
-        } else {
-            1
-        };
         let in_features = *input.shape.last().unwrap();
         let out_features = self.w.shape[0];
+
+        // Calculate batch size by flattening all dimensions except the last
+        let batch = input_f32.len() / in_features;
 
         let mut ans_shape = input.shape.clone();
         *ans_shape.last_mut().unwrap() = out_features;

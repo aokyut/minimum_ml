@@ -1,4 +1,4 @@
-/// Binary I/O utilities for model serialization.
+/// Binary I/O utilities for model parameters.
 pub(crate) mod binary_io;
 /// Activation functions and loss functions.
 pub mod funcs;

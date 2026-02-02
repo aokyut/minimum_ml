@@ -15,9 +15,7 @@
 //!
 //! This crate supports optional features to minimize dependencies:
 //!
-//! - `serialization`: Enable model saving/loading with serde (adds `serde`, `serde_json`, `anyhow`)
-//! - `logging`: Enable TensorBoard logging (adds `tensorboard-rs`, `chrono`)
-//! - `progress`: Enable progress bars during training (adds `indicatif`)
+//! - `logging`: Enable TensorBoard logging (std-based, no external deps)
 //! - `full`: Enable all features
 //!
 //! By default, **no optional features are enabled**, keeping the dependency footprint minimal.
@@ -30,31 +28,44 @@
 //! minimum_ml = "0.1.1"
 //! ```
 //!
-//! With serialization support:
-//! ```toml
-//! [dependencies]
-//! minimum_ml = { version = "0.1.1", features = ["serialization"] }
-//! ```
-//!
-//! With all features:
-//! ```toml
-//! [dependencies]
-//! minimum_ml = { version = "0.1.1", features = ["full"] }
-//! ```
-//!
 //! # Usage Example
 //!
-//! ```ignore
+//! Using the `sequential!` macro to define a network:
+//!
+//! ```
 //! use minimum_ml::ml::{Tensor, Graph};
 //! use minimum_ml::ml::params::MM;
+//! use minimum_ml::ml::funcs::{ReLU, Softmax, CrossEntropyLoss};
 //!
-//! // Create a computational graph
-//! let graph = Graph::new();
+//! fn main() {
+//!     let mut g = Graph::new();
+//!     
+//!     // 1. Define placeholders for input and target
+//!     let input = g.push_placeholder();
+//!     let target = g.push_placeholder();
+//!     
+//!     // 2. Define the network structure
+//!     let network_output = minimum_ml::sequential!(
+//!         g,
+//!         input,
+//!         [
+//!             MM::new(784, 128), // Linear layer (784 -> 128)
+//!             ReLU::new(),       // Activation
+//!             MM::new(128, 10),  // Linear layer (128 -> 10)
+//!             Softmax::new(),    // Output activation
+//!         ]
+//!     );
 //!
-//! // Create tensors and perform operations
-//! let x = Tensor::new(vec![1.0, 2.0, 3.0], vec![3]);
-//! let linear = MM::new(3, 2);
-//! let output = linear.forward(&graph, &x);
+//!     // 3. Define Loss
+//!     let loss = g.add_layer(
+//!         vec![network_output, target], 
+//!         Box::new(CrossEntropyLoss::new())
+//!     );
+//!     
+//!     // 4. Set Graph Targets
+//!     g.set_target(loss);
+//!     g.set_placeholder(vec![input, target]);
+//! }
 //! ```
 
 /// Dataset utilities for loading and batching data.

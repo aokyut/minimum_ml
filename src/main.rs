@@ -203,6 +203,7 @@ fn train_mnist() {
     println!("Final Test Accuracy: {:.2}%\n", final_acc * 100.0);
 }
 
+/// Load MNIST-txt dataset file
 fn load_mnist(path: &str) -> (Vec<f32>, Vec<f32>) {
     use std::io::BufRead;
     let file = std::fs::File::open(path).expect("Failed to open MNIST file");
