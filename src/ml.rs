@@ -387,6 +387,23 @@ impl AddAssign for Tensor {
     }
 }
 
+impl AddAssign<&Tensor> for Tensor {
+    fn add_assign(&mut self, rhs: &Tensor) {
+        let size = self.len();
+        assert_eq!(size, rhs.len());
+
+        let rhs_data = rhs.as_f32_slice();
+        match &mut self.data {
+            TensorData::F32(v) => {
+                for i in 0..size {
+                    v[i] += rhs_data[i];
+                }
+            }
+            _ => panic!("AddAssign only supported for F32 target"),
+        }
+    }
+}
+
 /// Trait for neural network layers and operations.
 ///
 /// Implementors define forward and backward passes for automatic differentiation.

@@ -3,7 +3,7 @@ members = [".", "stackable_derive"]
 
 [package]
 name = "minimum_ml"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 license = "MIT"
 authors = ["aokyut <epaperamic@gmail.com>"]
@@ -13,7 +13,7 @@ homepage = "https://github.com/aokyut/minimum_ml"
 documentation = "https://docs.rs/minimum_ml"
 
 [features]
-default = []
+default = ["logging"]
 # logging uses custom implementation (std only)
 logging = []
 full = ["logging"]

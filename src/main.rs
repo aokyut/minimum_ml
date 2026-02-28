@@ -95,10 +95,10 @@ fn train_mnist() {
     let batch_size = 64;
     let epoch = 20;
     println!("Loading MNIST...");
-    let train_dataloader = Dataloader::new(MnistDataset::new("mnist_train.txt"), batch_size, true);
+    let train_dataloader = Dataloader::new(MnistDataset::new("MNIST_train.txt"), batch_size, true);
     println!("Loaded {} samples.", train_dataloader.len());
     println!("Loading MNIST test...");
-    let test_dataloader = Dataloader::new(MnistDataset::new("mnist_test.txt"), batch_size, false);
+    let test_dataloader = Dataloader::new(MnistDataset::new("MNIST_test.txt"), batch_size, false);
     println!("Loaded {} samples.", test_dataloader.len());
 
     let mut loss_f32: Option<f32> = None;

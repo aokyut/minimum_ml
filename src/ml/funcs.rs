@@ -39,35 +39,6 @@ impl<F: SingleShoot> Node for F {
     }
 }
 
-// impl<F: SingleShootLoss> Node for F {
-//     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, output: &Tensor) -> Vec<Tensor> {
-//         let mut igrad1 = Tensor::zeros_like(inputs[0]);
-//         let mut igrad2 = Tensor::zeros_like(inputs[1]);
-//         let scale = 1.0 / inputs[0].data.len() as f32;
-//         let loss = output.data[0];
-
-//         for i in 0..grad.data.len() {
-//             let (x1_, x2_) = self.single_backward_loss(inputs[0].data[i], inputs[1].data[i], loss);
-//             igrad1.data[i] = grad.data[i] * scale * x1_;
-//             igrad2.data[i] = grad.data[i] * scale * x2_;
-//         }
-
-//         return vec![igrad1, igrad2];
-//     }
-//     fn call(&self, input: Vec<Tensor>) -> Tensor {
-//         assert_eq!(input.len(), 1);
-//         let xs1 = &input[0];
-//         let xs2 = &input[1];
-//         let size = xs1.data.len() as f32;
-//         let mut loss = 0.0;
-//         for i in 0..input.data.len() {
-//             loss += self.single_forward_loss(xs1.data[i], xs2.data[i]);
-//         }
-
-//         return Tensor::new(vec![loss / size], vec![1]);
-//     }
-// }
-
 pub struct ReLU {
     ignore_grad: bool,
 }
@@ -253,6 +224,23 @@ impl SingleShoot for Tanh {
     }
 }
 
+pub struct SoftPlus {}
+
+impl SoftPlus{
+    pub fn new() -> Self {
+        SoftPlus {}
+    }
+}
+
+impl SingleShoot for SoftPlus {
+    fn single_backward(&self, x: f32, _: f32) -> f32 {
+        1.0 / (1.0 + (-x).exp())
+    }
+    fn single_forward(&self, x: f32) -> f32 {
+        (1.0 + x.exp()).ln()
+    }
+}
+
 pub struct Sigmoid {
     alpha: f32,
 }
@@ -432,17 +420,17 @@ impl Node for MSE {
     }
 }
 
-pub struct BinaryCrossEntropy {
+pub struct BinaryCrossEntropyLoss {
     eps: f32,
 }
 
-impl BinaryCrossEntropy {
+impl BinaryCrossEntropyLoss {
     pub fn default() -> Self {
-        BinaryCrossEntropy { eps: 0.001 }
+        BinaryCrossEntropyLoss { eps: 0.001 }
     }
 }
 
-impl Node for BinaryCrossEntropy {
+impl Node for BinaryCrossEntropyLoss {
     fn call(&self, input: Vec<Tensor>) -> Tensor {
         assert_eq!(input.len(), 2);
         let left = input[0].as_f32_slice();
@@ -586,112 +574,154 @@ impl Node for CrossEntropyLoss {
     }
 }
 
-pub struct QuantizeNode {
-    pub is_inference: bool,
+pub struct BinaryCrossEntropy{
+    eps: f32,
 }
 
-impl Default for QuantizeNode {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl QuantizeNode {
+impl BinaryCrossEntropy {
     pub fn new() -> Self {
-        Self {
-            is_inference: false,
-        }
+        BinaryCrossEntropy { eps: 1e-7 }
     }
 }
 
-impl Node for QuantizeNode {
+impl Node for BinaryCrossEntropy {
     fn call(&self, inputs: Vec<Tensor>) -> Tensor {
-        let input = &inputs[0];
-        if !self.is_inference {
-            return input.clone();
+        assert_eq!(inputs.len(), 2);
+        let predictions = inputs[0].as_f32_slice();
+        let targets = inputs[1].as_f32_slice();
+        assert_eq!(predictions.len(), targets.len());
+        
+        let mut loss_vec = vec![0.0; predictions.len()];
+        
+        for i in 0..predictions.len() {
+            loss_vec[i] = -targets[i] * (predictions[i] + self.eps).ln()
+                - (1.0 - targets[i]) * (1.0 - predictions[i] + self.eps).ln();
         }
-
-        let input_f32 = input.as_f32_slice();
-        let n_samples = if input.shape.is_empty() {
-            1
-        } else {
-            input.shape[0]
-        };
-        let sample_dim = input_f32.len() / n_samples;
-
-        let mut i8_data = vec![0i8; input_f32.len()];
-        let mut scales = Vec::with_capacity(n_samples);
-
-        for i in 0..n_samples {
-            let offset = i * sample_dim;
-            let sample = &input_f32[offset..offset + sample_dim];
-
-            let mut max_val = 0.0f32;
-            for &v in sample {
-                max_val = max_val.max(v.abs());
-            }
-            let scale = if max_val > 0.0 { 127.0 / max_val } else { 1.0 };
-            scales.push(scale);
-
-            for j in 0..sample_dim {
-                i8_data[offset + j] = (sample[j] * scale).round().clamp(-128.0, 127.0) as i8;
-            }
+        
+        Tensor::new(loss_vec, inputs[0].shape.clone())
+    }
+    
+    fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _output: &Tensor) -> Vec<Tensor> {
+        let predictions = inputs[0].as_f32_slice();
+        let targets = inputs[1].as_f32_slice();
+        let g = grad.as_f32_slice();
+        
+        let mut predictions_grad = Tensor::zeros_like(inputs[0]);
+        let predictions_grad_data = predictions_grad.f32_data_mut();
+        
+        for i in 0..predictions.len() {
+            predictions_grad_data[i] = (-targets[i] / (predictions[i] + self.eps)
+                + (1.0 - targets[i]) / (1.0 - predictions[i] + self.eps)) * g[i];
         }
-
-        Tensor::new_i8(i8_data, scales, input.shape.clone())
+        
+        vec![predictions_grad, Tensor::zeros_like(inputs[1])]
     }
-
-    fn backward(&mut self, grad: &Tensor, _inputs: Vec<&Tensor>, _output: &Tensor) -> Vec<Tensor> {
-        // Identity backward
-        vec![grad.clone()]
-    }
-
-    fn prepare_inference(&mut self) {
-        self.is_inference = true;
-    }
-
-    fn prepare_train(&mut self) {
-        self.is_inference = false;
-    }
-
+    
     fn no_grad(&self) -> bool {
         false
     }
 }
 
-pub struct DequantizeNode {}
-
-impl Default for DequantizeNode {
-    fn default() -> Self {
-        Self::new()
-    }
+pub struct Sum {
+    axis: Option<usize>,
+    keepdim: bool,
 }
 
-impl DequantizeNode {
-    pub fn new() -> Self {
-        Self {}
+impl Sum {
+    pub fn new(axis: Option<usize>, keepdim: bool) -> Self {
+        Sum { axis, keepdim }
     }
-}
 
-impl Node for DequantizeNode {
-    fn call(&self, inputs: Vec<Tensor>) -> Tensor {
-        let input = &inputs[0];
-        match &input.data {
-            TensorData::F32(_) => input.clone(),
-            TensorData::I8 { .. } => {
-                let f32_data = input.as_f32_slice().into_owned();
-                Tensor::new(f32_data, input.shape.clone())
+    pub fn sum_all(&self, input: &Tensor) -> Tensor {
+        let input_data = input.as_f32_slice();
+        let sum = input_data.iter().sum();
+        Tensor::new(vec![sum], vec![1])
+    }
+
+    pub fn sum_along_axis(&self, input: &Tensor, axis: usize) -> Tensor {
+        let mut output_shape = input.shape.clone();
+        let dim_size = output_shape[axis];
+        if self.keepdim {
+            output_shape[axis] = 1;
+        } else {
+            output_shape.remove(axis);
+        }
+        let mut output_data = vec![0.0; output_shape.iter().product()];
+        let input_data = input.as_f32_slice();
+        
+        for i in 0..input_data.len() {
+            let mut out_idx = i;
+            for j in (axis + 1)..input.shape.len() {
+                out_idx /= input.shape[j];
             }
+            out_idx /= dim_size;
+            output_data[out_idx] += input_data[i];
+        }
+        
+        Tensor::new(output_data, output_shape)
+    }
+}
+
+impl Node for Sum {
+    fn call(&self, inputs: Vec<Tensor>) -> Tensor {
+        match self.axis {
+            Some(axis) => self.sum_along_axis(&inputs[0], axis),
+            None => self.sum_all(&inputs[0]),
         }
     }
+    fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
+        let mut igrad = Tensor::zeros_like(inputs[0]);
+        let grad_data = grad.get_item().unwrap();
+        let igrad_f32 = igrad.f32_data_mut();
 
-    fn backward(&mut self, grad: &Tensor, _inputs: Vec<&Tensor>, _output: &Tensor) -> Vec<Tensor> {
-        // Identity backward
-        vec![grad.clone()]
+        for i in 0..igrad_f32.len() {
+            igrad_f32[i] = grad_data;
+        }
+
+        vec![igrad]
     }
+    fn no_grad(&self) -> bool {
+        false
+    }
+}
 
-    fn prepare_inference(&mut self) {}
+pub struct CumlativeSum {
+    axis: usize,
+}
 
+impl CumlativeSum {
+    pub fn new(axis: usize) -> Self {
+        CumlativeSum { axis }
+    }
+}
+
+impl Node for CumlativeSum {
+    fn call(&self, inputs: Vec<Tensor>) -> Tensor {
+        let input = &inputs[0];
+        let input_data = input.as_f32_slice();
+        let mut output_vec = vec![0.0; input_data.len()];
+        let mut running_sum = 0.0;
+
+        for i in 0..input_data.len() {
+            running_sum += input_data[i];
+            output_vec[i] = running_sum;
+        }
+
+        Tensor::new(output_vec, input.shape.clone())
+    }
+    fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
+        let mut igrad = Tensor::zeros_like(inputs[0]);
+        let grad_data = grad.as_f32_slice();
+        let igrad_f32 = igrad.f32_data_mut();
+        let mut running_sum = 0.0;
+
+        for i in (0..igrad_f32.len()).rev() {
+            running_sum += grad_data[i];
+            igrad_f32[i] = running_sum;
+        }
+
+        vec![igrad]
+    }
     fn no_grad(&self) -> bool {
         false
     }

@@ -105,3 +105,6 @@ pub const TYPE_LINEAR: u8 = 1;
 pub const TYPE_MM: u8 = 2;
 pub const TYPE_BIAS: u8 = 3;
 pub const TYPE_QUANTIZED_LINEAR: u8 = 4;
+pub const TYPE_QUANTIZED_MM: u8 = 5;
+pub const TYPE_QUANTIZED_BIAS: u8 = 6;
+pub const TYPE_PARAMETER: u8 = 7;

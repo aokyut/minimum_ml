@@ -6,4 +6,6 @@ out
 runs
 model
 *.log
-
+MNIST_test.txt
+MNIST_train.txt
+mise.toml

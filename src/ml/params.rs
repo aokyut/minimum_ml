@@ -2,6 +2,101 @@ use super::xiver_vec;
 use super::{Node, Result, Tensor, TensorData};
 
 
+pub struct Parameter{
+    pub tensor: Tensor,
+    pub grad: Option<Tensor>,
+    pub ignore_grad: bool,
+}
+
+impl Parameter {
+    pub fn new(tensor: Tensor) -> Self {
+        Self {
+            tensor,
+            grad: None,
+            ignore_grad: false,
+        }
+    }
+
+    pub fn set_ignore(&mut self) {
+        self.ignore_grad = true;
+    }
+}
+
+impl Node for Parameter {
+    fn backward(&mut self, grad: &Tensor, _: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
+        if let Some(_grad) = self.grad.as_mut() {
+            *_grad += grad;
+        } else {
+            self.grad = Some(grad.clone());
+        }
+        vec![]
+    }
+
+    fn call(&self, _: Vec<Tensor>) -> Tensor {
+        self.tensor.clone()
+    }
+
+    fn prepare_inference(&mut self) {}
+    fn no_grad(&self) -> bool {
+        self.ignore_grad
+    }
+
+    fn has_params(&self) -> bool {
+        !self.ignore_grad
+    }
+
+    fn pull_grad(&self) -> Option<Vec<&Tensor>> {
+        Some(vec![self.grad.as_ref().unwrap()])
+    }
+
+    fn apply_update(&mut self, update: Vec<Tensor>) {
+        let tensor_f32 = self.tensor.f32_data_mut();
+        let up_f32 = update[0].as_f32_slice();
+        for i in 0..tensor_f32.len() {
+            tensor_f32[i] += up_f32[i];
+        }
+
+        self.grad = None;
+    }
+
+    fn print(&self) {
+        println!("param:{:?}", self.tensor)
+    }
+
+    fn save_param(&self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
+        use std::fs::File;
+        use std::io::BufWriter;
+
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+
+        write_header(&mut writer, TYPE_PARAMETER)?;
+        write_tensor_data(&mut writer, self.tensor.as_f32_slice().as_ref(), &self.tensor.shape)?;
+
+        Ok(())
+    }
+
+    fn load_param(&mut self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
+        use std::fs::File;
+        use std::io::BufReader;
+
+        let file = File::open(path)?;
+        let mut reader = BufReader::new(file);
+
+        read_header(&mut reader, TYPE_PARAMETER)?;
+        
+        let (data, shape) = read_tensor_data(&mut reader)?;
+        self.tensor = Tensor {
+            data: TensorData::F32(data),
+            shape,
+        };
+
+        Ok(())
+    }
+}
+
 pub struct Linear {
     pub w: Tensor,
     pub b: Tensor,
