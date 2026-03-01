@@ -2,7 +2,7 @@
 #![allow(missing_docs)]
 
 use minimum_ml::dataset::{Dataloader, Dataset, Stackable};
-use minimum_ml::ml;
+use minimum_ml::{ml, sequential};
 use minimum_ml::utills::rand::get_random_normal;
 use minimum_ml::{
     ml::Tensor,
@@ -260,6 +260,13 @@ fn train_ordinal_model() {
     let param = params::Parameter::new(param_tensor);
     let param = g.add_parameter(param);
     let th = g.add_layer(vec![param], Box::new(funcs::CumlativeSum::new(1)));
+    let th = sequential!{
+        g, param,
+        [
+            funcs::CumlativeSum::new(1),
+            funcs::SoftPlus::new(),
+        ]
+    };
     let diff = g.add_layer(vec![output, th], Box::new(funcs::Sub::new()));
     let probs = g.add_layer(vec![diff], Box::new(funcs::Sigmoid::new(1.0)));
 
@@ -272,9 +279,9 @@ fn train_ordinal_model() {
     g.set_train_mode();
     g.set_placeholder(vec![input, target, target_mask]);
 
-    let input_tensor = Tensor::ones(vec![3, 96]);
-    let target_tensor = Tensor::ones(vec![3, 16]);
-    let target_mask_tensor = Tensor::ones(vec![3, 16]);
+    let input_tensor = Tensor::ones(vec![64, 96]);
+    let target_tensor = Tensor::ones(vec![64, 16]);
+    let target_mask_tensor = Tensor::ones(vec![64, 16]);
 
     let result = g.forward(vec![input_tensor, target_tensor, target_mask_tensor]);
 

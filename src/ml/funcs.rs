@@ -909,7 +909,7 @@ impl Node for Add {
     }
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
         let left = inputs[0];
-        let right = inputs[0];
+        let right = inputs[1];
         let (_, (left_indices, right_indices)) = Tensor::broadcast_shape(left, right);
         let mut left_grad = vec![0.0; left.len()];
         let mut right_grad = vec![0.0; right.len()];
@@ -952,7 +952,7 @@ impl Node for Sub{
     }
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
         let left = inputs[0];
-        let right = inputs[0];
+        let right = inputs[1];
         let (_, (left_indices, right_indices)) = Tensor::broadcast_shape(left, right);
         let mut left_grad = vec![0.0; left.len()];
         let mut right_grad = vec![0.0; right.len()];
@@ -995,7 +995,7 @@ impl Node for Mul{
     }
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
         let left = inputs[0];
-        let right = inputs[0];
+        let right = inputs[1];
         let left_data = left.as_f32_slice();
         let right_data = right.as_f32_slice();
         let (_, (left_indices, right_indices)) = Tensor::broadcast_shape(left, right);
