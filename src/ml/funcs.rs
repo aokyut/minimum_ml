@@ -587,7 +587,6 @@ impl BinaryCrossEntropy {
 impl Node for BinaryCrossEntropy {
     fn call(&self, inputs: Vec<Tensor>) -> Tensor {
         assert_eq!(inputs.len(), 2);
-        println!("{:#?}", inputs);
         let predictions = inputs[0].as_f32_slice();
         let targets = inputs[1].as_f32_slice();
         assert_eq!(predictions.len(), targets.len());
