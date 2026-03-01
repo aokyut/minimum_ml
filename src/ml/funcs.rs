@@ -756,15 +756,35 @@ impl Node for Mean{
         }
     }
     fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
-        let mut igrad = Tensor::zeros_like(inputs[0]);
-        let grad_data = grad.get_item().unwrap();
-        let igrad_f32 = igrad.f32_data_mut();
-
-        for i in 0..igrad_f32.len() {
-            igrad_f32[i] = grad_data;
+        match self.axis{
+            None => {
+                let mut igrad = Tensor::zeros_like(inputs[0]);
+                let grad_data = grad.get_item().unwrap();
+                let igrad_f32 = igrad.f32_data_mut();
+        
+                for i in 0..igrad_f32.len() {
+                    igrad_f32[i] = grad_data / igrad_f32.len() as f32;
+                }
+        
+                vec![igrad]
+            },
+            Some(ax) => {
+                let dim_size = inputs[0].shape[ax];
+                let grad_data = grad.as_f32_slice();
+                let mut igrad_data = vec![0.0; inputs[0].len()];
+                
+                for i in 0..inputs[0].len() {
+                    let mut out_idx = i;
+                    for j in (ax + 1)..inputs[0].shape.len() {
+                        out_idx /= inputs[0].shape[j];
+                    }
+                    out_idx /= dim_size;
+                    igrad_data[i] += grad_data[out_idx] / dim_size as f32;
+                }
+                
+                vec![Tensor::new(igrad_data, inputs[0].shape.clone())]
+            }
         }
-
-        vec![igrad]
     }
     fn no_grad(&self) -> bool {
         false
