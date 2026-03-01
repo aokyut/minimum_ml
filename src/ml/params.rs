@@ -57,6 +57,8 @@ impl Node for Parameter {
         }
 
         self.grad = None;
+
+        self.print();
     }
 
     fn print(&self) {

@@ -1,6 +1,51 @@
 use crate::ml::{self, Node, Tensor};
 
 #[test]
+fn test_add_1(){
+    use crate::ml::{self, params::*, funcs::*};
+    let a = ml::Tensor::new(
+        vec![0.0, 1.0, 2.0],
+        vec![1, 3, 1]
+    );
+    let b = ml::Tensor::new(
+        vec![0.0, 4.0],
+        vec![1, 1, 2]
+    );
+    let c = ml::Tensor::new(
+        vec![5.0, 0.0],
+        vec![2, 1, 1]
+    );
+
+    let inputs = vec![
+        vec![a.clone(), b.clone()],
+        vec![a.clone(), c.clone()],
+        vec![b.clone(), c.clone()]
+    ];
+
+    let o1 = ml::Tensor::new(
+        vec![0.0, 4.0, 1.0, 5.0, 2.0, 6.0],
+        vec![1, 3, 2]
+    );
+    let o2 = ml::Tensor::new(
+        vec![5.0, 6.0, 7.0, 0.0, 1.0, 2.0],
+        vec![2, 3,1]
+    );
+    let o3 = ml::Tensor::new(
+        vec![5.0, 9.0, 0.0, 4.0],
+        vec![2,1,2]
+    );
+    let outputs = vec![
+        o1,o2,o3
+    ];
+
+    for i in 0..3{
+        let out = Add::new().call(inputs[i].clone());
+        println!("{:#?}", out);
+        assert_tensor(out, outputs[i].clone(), String::from("[TEST_ADD]"));
+    }
+}
+
+#[test]
 fn test_linear_benchmark() {
     use crate::quantize::{
         params::QuantizedLinear,

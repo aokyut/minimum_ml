@@ -14,7 +14,8 @@ use minimum_ml::{
 
 
 fn main() {
-    train_mnist();
+    // train_mnist();
+    train_ordinal_model();
 }
 
 #[derive(Stackable)]
@@ -81,8 +82,6 @@ fn train_mnist() {
     let loss = g.add_layer(vec![dequantized, target], Box::new(ml::funcs::CrossEntropyLoss::new()));
 
     g.set_train_mode();
-    g.set_inference_mode();
-    g.set_train_mode();
     g.set_target(loss);
 
     // println!("g: {:#?}", g.layers.len());
@@ -124,6 +123,10 @@ fn train_mnist() {
 
             logger.log_scalar("train/loss", loss_f32.unwrap()).unwrap();
             
+            g.backward();
+            g.optimize();
+            g.reset();
+            
             if step % 100 == 0 {
                 g.set_inference_mode();
                 g.set_target(dequantized);
@@ -140,9 +143,6 @@ fn train_mnist() {
             }
             logger.next_step();
 
-            g.backward();
-            g.optimize();
-            g.reset();
         }
         
         // Evaluate on test set after each epoch
@@ -231,4 +231,58 @@ fn load_mnist(path: &str) -> (Vec<f32>, Vec<f32>) {
 
 fn test_func(x: Vec<f32>) -> f32 {
     x[0].sin() + x[1].cos()
+}
+
+fn train_ordinal_model() {
+    use minimum_ml::ml::{self, funcs, params};
+    let mut g = ml::Graph::new();
+    let input = g.push_placeholder();
+    let target = g.push_placeholder();
+    let target_mask = g.push_placeholder();
+
+    let optim = minimum_ml::ml::optim::Adam::new(0.001, 0.9, 0.999);
+    g.set_optimizer(optim);
+
+    // [Batch, 16]
+    let output = minimum_ml::sequential!(
+        g,
+        input,
+        [
+            ml::params::Linear::auto(96, 512),
+            ml::funcs::ReLU::new(),
+            ml::params::Linear::auto(512, 256),
+            ml::funcs::ReLU::new(),
+            ml::params::Linear::auto(256, 1),
+            ml::funcs::Tile::new(vec![1, 16]),
+        ]
+    );
+    let param_tensor = Tensor::ones(vec![1, 16]);
+    let param = params::Parameter::new(param_tensor);
+    let param = g.add_parameter(param);
+    let th = g.add_layer(vec![param], Box::new(funcs::CumlativeSum::new(1)));
+    let diff = g.add_layer(vec![output, th], Box::new(funcs::Sub::new()));
+    let probs = g.add_layer(vec![diff], Box::new(funcs::Sigmoid::new(1.0)));
+
+    let bce = g.add_layer(vec![probs, target], Box::new(funcs::BinaryCrossEntropy::new()));
+    let bce_masked = g.add_layer(vec![bce, target_mask], Box::new(funcs::Mul::new()));
+    let sum = g.add_layer(vec![bce_masked], Box::new(funcs::Sum::new(Some(1), false)));
+    let loss = g.add_layer(vec![sum], Box::new(funcs::Mean::new(None, false)));
+
+    g.set_target(loss);
+    g.set_train_mode();
+    g.set_placeholder(vec![input, target, target_mask]);
+
+    let input_tensor = Tensor::ones(vec![3, 96]);
+    let target_tensor = Tensor::ones(vec![3, 16]);
+    let target_mask_tensor = Tensor::ones(vec![3, 16]);
+
+    let result = g.forward(vec![input_tensor, target_tensor, target_mask_tensor]);
+
+    println!("result:{:#?}", result);
+
+    g.backward();
+    g.optimize();
+    g.reset();
+
+    
 }

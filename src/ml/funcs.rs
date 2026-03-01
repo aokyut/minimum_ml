@@ -587,6 +587,7 @@ impl BinaryCrossEntropy {
 impl Node for BinaryCrossEntropy {
     fn call(&self, inputs: Vec<Tensor>) -> Tensor {
         assert_eq!(inputs.len(), 2);
+        println!("{:#?}", inputs);
         let predictions = inputs[0].as_f32_slice();
         let targets = inputs[1].as_f32_slice();
         assert_eq!(predictions.len(), targets.len());
@@ -624,12 +625,12 @@ impl Node for BinaryCrossEntropy {
 
 pub struct Sum {
     axis: Option<usize>,
-    keepdim: bool,
+    keepdims: bool,
 }
 
 impl Sum {
-    pub fn new(axis: Option<usize>, keepdim: bool) -> Self {
-        Sum { axis, keepdim }
+    pub fn new(axis: Option<usize>, keepdims: bool) -> Self {
+        Sum { axis, keepdims }
     }
 
     pub fn sum_all(&self, input: &Tensor) -> Tensor {
@@ -641,7 +642,7 @@ impl Sum {
     pub fn sum_along_axis(&self, input: &Tensor, axis: usize) -> Tensor {
         let mut output_shape = input.shape.clone();
         let dim_size = output_shape[axis];
-        if self.keepdim {
+        if self.keepdims {
             output_shape[axis] = 1;
         } else {
             output_shape.remove(axis);
@@ -663,6 +664,91 @@ impl Sum {
 }
 
 impl Node for Sum {
+    fn call(&self, inputs: Vec<Tensor>) -> Tensor {
+        match self.axis {
+            Some(axis) => self.sum_along_axis(&inputs[0], axis),
+            None => self.sum_all(&inputs[0]),
+        }
+    }
+    fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
+        match self.axis{
+            None => {
+                let mut igrad = Tensor::zeros_like(inputs[0]);
+                let grad_data = grad.get_item().unwrap();
+                let igrad_f32 = igrad.f32_data_mut();
+        
+                for i in 0..igrad_f32.len() {
+                    igrad_f32[i] = grad_data;
+                }
+        
+                vec![igrad]
+            },
+            Some(ax) => {
+                let mut output_shape = grad.shape.clone();
+                let dim_size = inputs[0].shape[ax];
+                let mut output_data = vec![0.0; output_shape.iter().product()];
+                let mut grad_data = grad.as_f32_slice();
+                let mut igrad_data = vec![0.0; inputs[0].len()];
+                
+                for i in 0..inputs[0].len() {
+                    let mut out_idx = i;
+                    for j in (ax + 1)..inputs[0].shape.len() {
+                        out_idx /= inputs[0].shape[j];
+                    }
+                    out_idx /= dim_size;
+                    igrad_data[i] += grad_data[out_idx];
+                }
+                
+                vec![Tensor::new(igrad_data, inputs[0].shape.clone())]
+            }
+        }
+    }
+    fn no_grad(&self) -> bool {
+        false
+    }
+}
+
+pub struct Mean{
+    axis: Option<usize>,
+    keepdims: bool,
+}
+
+impl Mean{
+    pub fn new(axis: Option<usize>, keepdims: bool) -> Self{
+        return Self{axis, keepdims};
+    }
+
+    pub fn sum_all(&self, input: &Tensor) -> Tensor {
+        let input_data = input.as_f32_slice();
+        let mean = input_data.iter().sum::<f32>() / (input_data.len() as f32);
+        Tensor::new(vec![mean], vec![1])
+    }
+
+    pub fn sum_along_axis(&self, input: &Tensor, axis: usize) -> Tensor {
+        let mut output_shape = input.shape.clone();
+        let dim_size = output_shape[axis];
+        if self.keepdims {
+            output_shape[axis] = 1;
+        } else {
+            output_shape.remove(axis);
+        }
+        let mut output_data = vec![0.0; output_shape.iter().product()];
+        let input_data = input.as_f32_slice();
+        
+        for i in 0..input_data.len() {
+            let mut out_idx = i;
+            for j in (axis + 1)..input.shape.len() {
+                out_idx /= input.shape[j];
+            }
+            out_idx /= dim_size;
+            output_data[out_idx] += input_data[i] / (dim_size as f32);
+        }
+        
+        Tensor::new(output_data, output_shape)
+    }
+}
+
+impl Node for Mean{
     fn call(&self, inputs: Vec<Tensor>) -> Tensor {
         match self.axis {
             Some(axis) => self.sum_along_axis(&inputs[0], axis),
@@ -721,6 +807,189 @@ impl Node for CumlativeSum {
         }
 
         vec![igrad]
+    }
+    fn no_grad(&self) -> bool {
+        false
+    }
+}
+
+pub struct Tile{
+    repeats: Vec<usize>,
+}
+
+impl Tile {
+    pub fn new(repeats: Vec<usize>) -> Self {
+        Tile { repeats }
+    }
+}
+
+impl Node for Tile {
+    fn call(&self, inputs: Vec<Tensor>) -> Tensor {
+        let input = &inputs[0];
+        let input_data = input.as_f32_slice();
+        let mut output_shape = Vec::new();
+        for (dim, &rep) in input.shape.iter().zip(self.repeats.iter()) {
+            output_shape.push(dim * rep);
+        }
+        let mut output_data = vec![0.0; output_shape.iter().product()];
+
+        for i in 0..output_data.len() {
+            let mut in_idx = i;
+            for j in (0..input.shape.len()).rev() {
+                in_idx /= self.repeats[j];
+                in_idx %= input.shape[j];
+            }
+            output_data[i] = input_data[in_idx];
+        }
+
+        Tensor::new(output_data, output_shape)
+    }
+    fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
+        let mut igrad = Tensor::zeros_like(inputs[0]);
+        let grad_data = grad.as_f32_slice();
+        let igrad_f32 = igrad.f32_data_mut();
+
+        for i in 0..grad_data.len() {
+            let mut in_idx = i;
+            for j in (0..inputs[0].shape.len()).rev() {
+                in_idx /= self.repeats[j];
+                in_idx %= inputs[0].shape[j];
+            }
+            igrad_f32[in_idx] += grad_data[i];
+        }
+
+        vec![igrad]
+    }
+    fn no_grad(&self) -> bool {
+        false
+    }
+}
+
+pub struct Add {}
+
+impl Add{
+    pub fn new() -> Self {
+        Add {}
+    }   
+}
+
+impl Node for Add {
+    fn call(&self, inputs: Vec<Tensor>) -> Tensor {
+        assert_eq!(inputs.len(), 2);
+        let left = inputs[0].as_f32_slice();
+        let right = inputs[1].as_f32_slice();
+        let (output_shape, (left_indices, right_indices)) = Tensor::broadcast_shape(&inputs[0], &inputs[1]);
+        // Broadcasting support: if shapes differ, we assume one is a scalar and broadcast it
+        let mut output_vec = vec![0.0; output_shape.iter().product()];
+
+        for (o, (&l, &r)) in left_indices.iter().zip(right_indices.iter()).enumerate() {
+            output_vec[o] = left[l] + right[r];
+        }
+
+        Tensor::new(output_vec, output_shape)
+    }
+    fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
+        let left = inputs[0];
+        let right = inputs[0];
+        let (_, (left_indices, right_indices)) = Tensor::broadcast_shape(left, right);
+        let mut left_grad = vec![0.0; left.len()];
+        let mut right_grad = vec![0.0; right.len()];
+        let out_grad_data = grad.as_f32_slice();
+
+        for (o, (&l, &r)) in left_indices.iter().zip(right_indices.iter()).enumerate(){
+            left_grad[l] += out_grad_data[o];
+            right_grad[r] += out_grad_data[o];
+        }
+
+        return vec![Tensor::new(left_grad, left.shape.clone()), Tensor::new(right_grad, right.shape.clone())];
+    }
+    fn no_grad(&self) -> bool {
+        false
+    }
+}
+
+pub struct Sub{}
+
+impl Sub{
+    pub fn new() -> Self{
+        return Sub{};
+    }
+}
+
+impl Node for Sub{
+     fn call(&self, inputs: Vec<Tensor>) -> Tensor {
+        assert_eq!(inputs.len(), 2);
+        let left = inputs[0].as_f32_slice();
+        let right = inputs[1].as_f32_slice();
+        let (output_shape, (left_indices, right_indices)) = Tensor::broadcast_shape(&inputs[0], &inputs[1]);
+        // Broadcasting support: if shapes differ, we assume one is a scalar and broadcast it
+        let mut output_vec = vec![0.0; output_shape.iter().product()];
+
+        for (o, (&l, &r)) in left_indices.iter().zip(right_indices.iter()).enumerate() {
+            output_vec[o] = left[l] - right[r];
+        }
+
+        Tensor::new(output_vec, output_shape)
+    }
+    fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
+        let left = inputs[0];
+        let right = inputs[0];
+        let (_, (left_indices, right_indices)) = Tensor::broadcast_shape(left, right);
+        let mut left_grad = vec![0.0; left.len()];
+        let mut right_grad = vec![0.0; right.len()];
+        let out_grad_data = grad.as_f32_slice();
+
+        for (o, (&l, &r)) in left_indices.iter().zip(right_indices.iter()).enumerate(){
+            left_grad[l] += out_grad_data[o];
+            right_grad[r] -= out_grad_data[o];
+        }
+
+        return vec![Tensor::new(left_grad, left.shape.clone()), Tensor::new(right_grad, right.shape.clone())];
+    }
+    fn no_grad(&self) -> bool {
+        false
+    }
+}
+
+pub struct Mul{}
+
+impl Mul{
+    pub fn new() -> Self{
+        Self{}
+    }
+}
+
+impl Node for Mul{
+    fn call(&self, inputs: Vec<Tensor>) -> Tensor {
+        assert_eq!(inputs.len(), 2);
+        let left = inputs[0].as_f32_slice();
+        let right = inputs[1].as_f32_slice();
+        let (output_shape, (left_indices, right_indices)) = Tensor::broadcast_shape(&inputs[0], &inputs[1]);
+        // Broadcasting support: if shapes differ, we assume one is a scalar and broadcast it
+        let mut output_vec = vec![0.0; output_shape.iter().product()];
+
+        for (o, (&l, &r)) in left_indices.iter().zip(right_indices.iter()).enumerate() {
+            output_vec[o] = left[l] * right[r];
+        }
+
+        Tensor::new(output_vec, output_shape)
+    }
+    fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
+        let left = inputs[0];
+        let right = inputs[0];
+        let left_data = left.as_f32_slice();
+        let right_data = right.as_f32_slice();
+        let (_, (left_indices, right_indices)) = Tensor::broadcast_shape(left, right);
+        let mut left_grad = vec![0.0; left.len()];
+        let mut right_grad = vec![0.0; right.len()];
+        let out_grad_data = grad.as_f32_slice();
+
+        for (o, (&l, &r)) in left_indices.iter().zip(right_indices.iter()).enumerate(){
+            left_grad[l] += out_grad_data[o] * right_data[r];
+            right_grad[r] += out_grad_data[o] * left_data[l];
+        }
+
+        return vec![Tensor::new(left_grad, left.shape.clone()), Tensor::new(right_grad, right.shape.clone())];
     }
     fn no_grad(&self) -> bool {
         false

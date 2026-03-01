@@ -335,6 +335,64 @@ impl Tensor {
             }
         }
     }
+    
+    pub fn broadcast_shape(left: &Tensor, right: &Tensor) -> (Vec<usize>, (Vec<usize>, Vec<usize>)){
+        assert!(
+            left.shape.len() == right.shape.len(),
+            "Broadcasting only supports tensors with the same number of dimensions"
+        );
+        let mut cast_shape = Vec::new();
+        let mut l_size = 1;
+        let mut l_indices = vec![0];
+        let mut r_size = 1;
+        let mut r_indices = vec![0];
+        for (l, r) in left.shape.iter().rev().zip(right.shape.iter().rev()) {
+            assert!(
+                l == r || *l == 1 || *r == 1,
+                "Shapes {:?} and {:?} are not compatible for broadcasting",
+                left.shape,
+                right.shape
+            ); 
+            let cast_size = (*l).max(*r);
+            cast_shape.push(cast_size);
+            if *l == cast_size {
+                l_indices = (0..cast_size)
+                    .flat_map(|i|
+                        l_indices.iter().map(move|j|i * l_size + *j))
+                    .collect::<Vec<usize>>();
+                
+                l_size *= cast_size;
+            } else {
+                l_indices = (0..cast_size)
+                    .flat_map(|_|
+                        l_indices.iter().map(|j|*j))
+                    .collect::<Vec<usize>>();
+            }
+            
+            if *r == cast_size {
+                r_indices = (0..cast_size)
+                    .flat_map(|i|
+                        r_indices.iter().map(move|j|i * r_size + *j))
+                    .collect::<Vec<usize>>();
+                
+                r_size *= cast_size;
+            } else {
+                r_indices = (0..cast_size)
+                    .flat_map(|_|
+                        r_indices.iter().map(|j|*j))
+                    .collect::<Vec<usize>>();
+            }
+        }
+
+        cast_shape.reverse();
+
+
+        return (cast_shape, (l_indices, r_indices));
+    }
+
+    pub fn size_from_shape(shape: Vec<usize>) -> usize{
+        shape.iter().product()
+    }
 }
 
 /// Creates a batched tensor from a vector of tensors.
@@ -471,7 +529,8 @@ pub struct Graph {
     pub optimizer: Option<Box<dyn Optimizer>>,
     pub flows: Vec<Option<Tensor>>,
     pub backflows: Vec<Option<Tensor>>,
-    placeholder: Option<Vec<usize>>,
+    placeholder: Vec<usize>,
+    paramholder: Vec<usize>,
     parameters: Vec<usize>,
     inputs: Vec<Vec<usize>>,
     output: Vec<usize>,
@@ -493,7 +552,8 @@ impl Graph {
             optimizer: None,
             backflows: Vec::new(),
             parameters: Vec::new(),
-            placeholder: None,
+            placeholder: Vec::new(),
+            paramholder: Vec::new(),
             inputs: Vec::new(),
             output: Vec::new(),
             target: 0,
@@ -550,7 +610,7 @@ impl Graph {
     }
 
     pub fn inference(&self, mut input_vec: Vec<Tensor>) -> Tensor {
-        let placeholder = self.placeholder.as_ref().unwrap();
+        let placeholder = &self.placeholder;
         assert_eq!(placeholder.len(), input_vec.len());
         let mut flows = vec![None; self.layers.len()];
 
@@ -561,6 +621,12 @@ impl Graph {
             let input = std::mem::replace(&mut input_vec[i], Tensor::null());
             flows[id] = Some(input);
         }
+
+        for i in self.paramholder.iter(){
+            let param = self.layers[*i].pull_grad().unwrap();
+            flows[*i] = Some(param[0].clone());
+        }
+
 
         let mut stack: Vec<usize> = vec![self.target];
         while let Some(tar) = stack.pop() {
@@ -592,7 +658,7 @@ impl Graph {
 
     pub fn forward(&mut self, input_vec: Vec<Tensor>) -> Tensor {
         // println!("[g]input:{:?}", input_vec);
-        self.forward_(self.placeholder.as_ref().unwrap().clone(), input_vec)
+        self.forward_(self.placeholder.clone(), input_vec)
     }
 
     pub fn forward_(&mut self, placeholder: Vec<usize>, mut input_vec: Vec<Tensor>) -> Tensor {
@@ -679,6 +745,22 @@ impl Graph {
         id
     }
 
+    /// Convenience: add a `Parameter` node from a `Tensor` and register it.
+    pub fn add_parameter(&mut self, tensor: crate::ml::params::Parameter) -> usize {
+        // Accept a prepared `Parameter` (so caller can set ignore_grad if needed).
+        self.layers.push(Box::new(tensor));
+        self.flows.push(None);
+        self.backflows.push(None);
+
+        let id = self.layers.len() - 1;
+        self.output.push(id);
+        self.parameters.push(id);
+        self.paramholder.push(id);
+        self.inputs.push(Vec::new());
+
+        id
+    }
+
     pub fn reset(&mut self) {
         for i in 0..self.flows.len() {
             self.flows[i] = None;
@@ -691,7 +773,7 @@ impl Graph {
     }
 
     pub fn set_placeholder(&mut self, placeholder: Vec<usize>) {
-        self.placeholder = Some(placeholder);
+        self.placeholder = placeholder;
     }
 
     pub fn save(&self, file: &str) {
@@ -719,4 +801,9 @@ impl Graph {
             path = path.parent().unwrap().to_path_buf();
         }
     }
+
+    pub fn set_optimizer(&mut self, optimizer: impl Optimizer + 'static){
+        self.optimizer = Some(Box::new(optimizer));
+    }
 }
+

@@ -182,6 +182,18 @@ impl Adam {
         }
     }
 
+    pub fn default() -> Self{
+        Adam {
+            alpha:0.001,
+            beta1:0.9,
+            beta2:0.999,
+            epsilon: 1e-8,
+            m: HashMap::new(),
+            v: HashMap::new(),
+            t: HashMap::new(),
+        }
+    }
+
     pub fn with_epsilon(alpha: f32, beta1: f32, beta2: f32, epsilon: f32) -> Self {
         Adam {
             alpha,
