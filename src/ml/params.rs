@@ -608,3 +608,355 @@ impl Node for Bias {
     }
 }
 
+pub struct BatchNorm{
+    eps: f32,
+    mu: Option<Tensor>,          // batch mean (used in backward / inference)
+    delta: Option<Tensor>,       // stddev+eps (denominator)
+    pub gamma: Option<Tensor>,       // scale parameter
+    pub beta: Option<Tensor>,        // shift parameter
+    pub gamma_grad: Option<Tensor>,  // gradient for gamma
+    pub beta_grad: Option<Tensor>,   // gradient for beta
+    is_train: bool,
+}
+
+impl BatchNorm{
+    pub fn new() -> Self{
+        Self {
+            eps: 1e-8,
+            mu: None,
+            delta: None,
+            gamma: None,
+            beta: None,
+            gamma_grad: None,
+            beta_grad: None,
+            is_train: false,
+        }
+    }
+
+    /// create a batch‑norm layer with learnable parameters
+    pub fn auto(num_features: usize) -> Self {
+        let mut bn = Self::new();
+        bn.gamma = Some(Tensor::ones(vec![num_features]));
+        bn.beta = Some(Tensor::zeros(vec![num_features]));
+        bn.mu = Some(Tensor::zeros(vec![num_features]));
+        bn.delta = Some(Tensor::ones(vec![num_features]));
+        bn
+    }
+}
+
+impl Node for BatchNorm{
+    fn backward(&mut self, grad: &Tensor, inputs: Vec<&Tensor>, _: &Tensor) -> Vec<Tensor> {
+        // Only a single input tensor is expected
+        let input = inputs[0];
+        let features = *input.shape.last().unwrap();
+        let batch = input.as_f32_slice().len() / features;
+
+        let x = input.as_f32_slice();
+        let dy = grad.as_f32_slice();
+
+        // recompute mean and delta from input; this mirrors the forward pass during training
+        let mut mu = vec![0.0; features];
+        for b in 0..batch {
+            let base = b * features;
+            for i in 0..features {
+                mu[i] += x[base + i];
+            }
+        }
+        for i in 0..features {
+            mu[i] /= batch as f32;
+        }
+        let mut delta = vec![0.0; features];
+        for b in 0..batch {
+            let base = b * features;
+            for i in 0..features {
+                let diff = x[base + i] - mu[i];
+                delta[i] += diff * diff;
+            }
+        }
+        for i in 0..features {
+            delta[i] = (delta[i] / batch as f32 + self.eps).sqrt();
+        }
+
+        // compute gradients for gamma and beta
+        let mut dgamma = vec![0.0; features];
+        let mut dbeta = vec![0.0; features];
+
+        for b in 0..batch {
+            let base = b * features;
+            for i in 0..features {
+                let idx = base + i;
+                dbeta[i] += dy[idx];
+                if self.gamma.is_some() {
+                    dgamma[i] += dy[idx] * (x[idx] - mu[i]) / delta[i];
+                }
+            }
+        }
+
+        if self.gamma.is_some() {
+            if let Some(g_grad) = self.gamma_grad.as_mut() {
+                let gdat = g_grad.f32_data_mut();
+                for i in 0..features {
+                    gdat[i] += dgamma[i];
+                }
+            } else {
+                self.gamma_grad = Some(Tensor::new(dgamma.clone(), vec![features]));
+            }
+        }
+        if self.beta.is_some() {
+            if let Some(b_grad) = self.beta_grad.as_mut() {
+                let bdat = b_grad.f32_data_mut();
+                for i in 0..features {
+                    bdat[i] += dbeta[i];
+                }
+            } else {
+                self.beta_grad = Some(Tensor::new(dbeta.clone(), vec![features]));
+            }
+        }
+
+        // compute input gradient
+        let mut dx = Tensor::zeros_like(input);
+        let dx_data = dx.f32_data_mut();
+
+        // precompute means over batch
+        let mut mean_dy = vec![0.0; features];
+        let mut mean_dy_xmu = vec![0.0; features];
+
+        for b in 0..batch {
+            let base = b * features;
+            for i in 0..features {
+                let idx = base + i;
+                mean_dy[i] += dy[idx];
+                mean_dy_xmu[i] += dy[idx] * (x[idx] - mu[i]);
+            }
+        }
+        for i in 0..features {
+            mean_dy[i] /= batch as f32;
+            mean_dy_xmu[i] /= batch as f32;
+        }
+
+        for b in 0..batch {
+            let base = b * features;
+            for i in 0..features {
+                let idx = base + i;
+                let g = if let Some(g) = &self.gamma { g.as_f32_slice()[i] } else { 1.0 };
+                dx_data[idx] = g
+                    * (1.0 / delta[i])
+                    * (dy[idx]
+                        - mean_dy[i]
+                        - (x[idx] - mu[i]) * (mean_dy_xmu[i] / (delta[i] * delta[i])));
+            }
+        }
+
+        vec![dx]
+    }
+
+    fn call(&self, input_vec: Vec<Tensor>) -> Tensor {
+        assert_eq!(input_vec.len(), 1);
+        let input = &input_vec[0];
+        let data = input.as_f32_slice();
+        let features = *input.shape.last().unwrap();
+        let batch = data.len() / features;
+
+        let mut out = vec![0.0; data.len()];
+
+        if self.is_train {
+            // compute mean over batch
+            let mut mu = vec![0.0; features];
+            for b in 0..batch {
+                let base = b * features;
+                for i in 0..features {
+                    mu[i] += data[base + i];
+                }
+            }
+            for i in 0..features {
+                mu[i] /= batch as f32;
+            }
+
+            // compute variance and denominator
+            let mut delta = vec![0.0; features];
+            for b in 0..batch {
+                let base = b * features;
+                for i in 0..features {
+                    let diff = data[base + i] - mu[i];
+                    delta[i] += diff * diff;
+                }
+            }
+            for i in 0..features {
+                delta[i] = (delta[i] / batch as f32 + self.eps).sqrt();
+            }
+
+            // normalize, scale, shift
+            for b in 0..batch {
+                let base = b * features;
+                for i in 0..features {
+                    let idx = base + i;
+                    let mut v = (data[idx] - mu[i]) / delta[i];
+                    if let Some(g) = &self.gamma {
+                        v *= g.as_f32_slice()[i];
+                    }
+                    if let Some(bias) = &self.beta {
+                        v += bias.as_f32_slice()[i];
+                    }
+                    out[idx] = v;
+                }
+            }
+        } else {
+            // inference mode uses stored statistics
+            let mu = self.mu.as_ref().expect("BatchNorm missing mean for inference");
+            let mu = mu.as_f32_slice();
+            let delta = self.delta.as_ref().expect("BatchNorm missing delta for inference");
+            let delta = delta.as_f32_slice();
+
+            for b in 0..batch {
+                let base = b * features;
+                for i in 0..features {
+                    let idx = base + i;
+                    let mut v = (data[idx] - mu[i]) / delta[i];
+                    if let Some(g) = &self.gamma {
+                        v *= g.as_f32_slice()[i];
+                    }
+                    if let Some(bias) = &self.beta {
+                        v += bias.as_f32_slice()[i];
+                    }
+                    out[idx] = v;
+                }
+            }
+        }
+
+        Tensor::new(out, input.shape.clone())
+    }
+
+    fn prepare_inference(&mut self) {
+        self.is_train = false;
+    }
+
+    fn prepare_train(&mut self) {
+        self.is_train = true;
+    }
+
+    fn no_grad(&self) -> bool {
+        // if not training and there are no learnable parameters
+        !self.is_train && self.gamma.is_none() && self.beta.is_none()
+    }
+
+    fn has_params(&self) -> bool {
+        self.gamma.is_some() || self.beta.is_some()
+    }
+
+    fn pull_grad(&self) -> Option<Vec<&Tensor>> {
+        let mut v = Vec::new();
+        if let Some(g) = &self.gamma_grad {
+            v.push(g);
+        }
+        if let Some(b) = &self.beta_grad {
+            v.push(b);
+        }
+        if v.is_empty() { None } else { Some(v) }
+    }
+
+    fn apply_update(&mut self, update: Vec<Tensor>) {
+        let mut idx = 0;
+        if self.gamma.is_some() {
+            let u = &update[idx];
+            let gdat = self.gamma.as_mut().unwrap().f32_data_mut();
+            let up = u.as_f32_slice();
+            for i in 0..gdat.len() {
+                gdat[i] += up[i];
+            }
+            self.gamma_grad = None;
+            idx += 1;
+        }
+        if self.beta.is_some() {
+            let u = &update[idx];
+            let bdat = self.beta.as_mut().unwrap().f32_data_mut();
+            let up = u.as_f32_slice();
+            for i in 0..bdat.len() {
+                bdat[i] += up[i];
+            }
+            self.beta_grad = None;
+        }
+    }
+
+    fn print(&self) {
+        println!(
+            "BatchNorm mu:{:?} delta:{:?} gamma:{:?} beta:{:?}",
+            self.mu, self.delta, self.gamma, self.beta
+        )
+    }
+
+    fn save_param(&self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
+        use std::fs::File;
+        use std::io::BufWriter;
+
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+
+        write_header(&mut writer, TYPE_BATCHNORM)?;
+
+        // write gamma, beta, mu, delta in order - allow empty vectors
+        if let Some(g) = &self.gamma {
+            write_tensor_data(&mut writer, g.as_f32_slice().as_ref(), &g.shape)?;
+        } else {
+            write_tensor_data(&mut writer, &[], &[])?;
+        }
+        if let Some(b) = &self.beta {
+            write_tensor_data(&mut writer, b.as_f32_slice().as_ref(), &b.shape)?;
+        } else {
+            write_tensor_data(&mut writer, &[], &[])?;
+        }
+        if let Some(mu) = &self.mu {
+            write_tensor_data(&mut writer, mu.as_f32_slice().as_ref(), &mu.shape)?;
+        } else {
+            write_tensor_data(&mut writer, &[], &[])?;
+        }
+        if let Some(d) = &self.delta {
+            write_tensor_data(&mut writer, d.as_f32_slice().as_ref(), &d.shape)?;
+        } else {
+            write_tensor_data(&mut writer, &[], &[])?;
+        }
+
+        Ok(())
+    }
+
+    fn load_param(&mut self, path: std::path::PathBuf) -> Result<()> {
+        use super::binary_io::*;
+        use std::fs::File;
+        use std::io::BufReader;
+
+        let file = File::open(path)?;
+        let mut reader = BufReader::new(file);
+
+        read_header(&mut reader, TYPE_BATCHNORM)?;
+
+        let (g_data, g_shape) = read_tensor_data(&mut reader)?;
+        self.gamma = if g_shape.is_empty() {
+            None
+        } else {
+            Some(Tensor { data: TensorData::F32(g_data), shape: g_shape })
+        };
+
+        let (b_data, b_shape) = read_tensor_data(&mut reader)?;
+        self.beta = if b_shape.is_empty() {
+            None
+        } else {
+            Some(Tensor { data: TensorData::F32(b_data), shape: b_shape })
+        };
+
+        let (mu_data, mu_shape) = read_tensor_data(&mut reader)?;
+        self.mu = if mu_shape.is_empty() {
+            None
+        } else {
+            Some(Tensor { data: TensorData::F32(mu_data), shape: mu_shape })
+        };
+
+        let (d_data, d_shape) = read_tensor_data(&mut reader)?;
+        self.delta = if d_shape.is_empty() {
+            None
+        } else {
+            Some(Tensor { data: TensorData::F32(d_data), shape: d_shape })
+        };
+
+        Ok(())
+    }
+}

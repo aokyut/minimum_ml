@@ -159,6 +159,50 @@ fn test_mat_mul() {
     assert_tensor(expected, out, String::new());
 }
 
+#[test]
+fn test_batchnorm_layer() {
+    use crate::ml::params::BatchNorm;
+
+    // create a simple batchnorm with learnable params
+    let mut bn = BatchNorm::auto(2);
+    bn.prepare_train();
+
+    let input = Tensor::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let output = bn.call(vec![input.clone()]);
+
+    // with gamma=1, beta=0 the normalized result can be computed by hand
+    // per-feature means = [2,3], stddev ~=1
+    let expected = Tensor::new(vec![-1.0, -1.0, 1.0, 1.0], vec![2, 2]);
+    assert_tensor(expected.clone(), output.clone(), String::from("bn forward"));
+
+    // backward pass with gradient=ones
+    let grad = Tensor::ones_like(&output);
+    let grads = bn.backward(&grad, vec![&input], &output);
+    assert_eq!(grads.len(), 1);
+    assert_eq!(grads[0].shape, vec![2, 2]);
+
+    // parameter gradients are available
+    if let Some(param_grads) = bn.pull_grad() {
+        assert_eq!(param_grads.len(), 2);
+        // gamma_grad first should be zero vector
+        let gammag = param_grads[0].as_f32_slice();
+        assert_eq!(gammag.as_ref(), &[0.0, 0.0]);
+        // beta_grad should equal batch size = 2 for each feature
+        let betag = param_grads[1].as_f32_slice();
+        assert_eq!(betag.as_ref(), &[2.0, 2.0]);
+    } else {
+        panic!("expected parameter gradients");
+    }
+
+    // saving and loading retains gamma/beta
+    let tmp_path = std::path::PathBuf::from("/tmp/bn_test.bin");
+    bn.save_param(tmp_path.clone()).unwrap();
+    let mut bn2 = BatchNorm::new();
+    bn2.load_param(tmp_path).unwrap();
+    assert!(bn2.gamma.is_some());
+    assert!(bn2.beta.is_some());
+}
+
 fn evaluate_metrics(name: &str, exacts: &[f32], approxs: &[f32], duration_ns: u128) {
     let n = exacts.len();
     if n == 0 {

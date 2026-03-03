@@ -14,8 +14,8 @@ use minimum_ml::{
 
 
 fn main() {
-    // train_mnist();
-    train_ordinal_model();
+    train_mnist();
+    // train_ordinal_model();
 }
 
 #[derive(Stackable)]
@@ -69,6 +69,9 @@ fn train_mnist() {
         [
             Quantize::new(),
             QuantizedLinear::auto(784, 64),
+            Dequantize::new(),
+            // ml::params::BatchNorm::auto(64),
+            Quantize::new(),
             // Dequantize::new(),
             QReLU::new(),
             // Quantize::new(),
@@ -251,6 +254,7 @@ fn train_ordinal_model() {
             ml::params::Linear::auto(96, 512),
             ml::funcs::ReLU::new(),
             ml::params::Linear::auto(512, 256),
+            ml::params::BatchNorm::auto(256),
             ml::funcs::ReLU::new(),
             ml::params::Linear::auto(256, 1),
             ml::funcs::Tile::new(vec![1, 16]),
@@ -279,17 +283,21 @@ fn train_ordinal_model() {
     g.set_train_mode();
     g.set_placeholder(vec![input, target, target_mask]);
 
-    let input_tensor = Tensor::ones(vec![64, 96]);
-    let target_tensor = Tensor::ones(vec![64, 16]);
-    let target_mask_tensor = Tensor::ones(vec![64, 16]);
+    for i in 0..100{
 
-    let result = g.forward(vec![input_tensor, target_tensor, target_mask_tensor]);
+        let input_tensor = Tensor::ones(vec![64, 96]);
+        let target_tensor = Tensor::ones(vec![64, 16]);
+        let target_mask_tensor = Tensor::ones(vec![64, 16]);
+    
+        let result = g.forward(vec![input_tensor, target_tensor, target_mask_tensor]);
+    
+        println!("result:{:#?}", result);
+    
+        g.backward();
+        g.optimize();
+        g.reset();
+    }
 
-    println!("result:{:#?}", result);
-
-    g.backward();
-    g.optimize();
-    g.reset();
 
     
 }

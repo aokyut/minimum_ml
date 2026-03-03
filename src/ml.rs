@@ -90,26 +90,11 @@ impl Tensor {
 
     pub fn zeros_like(tensor: &Tensor) -> Self {
         let size = tensor.len();
-        match &tensor.data {
-            TensorData::F32(_) => {
-                let data = vec![0.0; size];
-                Tensor {
-                    data: TensorData::F32(data),
-                    shape: tensor.shape.clone(),
-                }
-            }
-            TensorData::I8 { scales, .. } => {
-                // Return i8 zeros if it was i8, but usually zeros_like is for grads/accumulators
-                // For simplicity, we fallback to f32 or return i8 with zero scales
-                let data = vec![0i8; size];
-                Tensor {
-                    data: TensorData::I8 {
-                        data,
-                        scales: vec![0.0; scales.len()],
-                    },
-                    shape: tensor.shape.clone(),
-                }
-            }
+        let data = vec![0.0; size];
+
+        Tensor {
+            data: TensorData::F32(data),
+            shape: tensor.shape.clone(),
         }
     }
 
@@ -622,10 +607,10 @@ impl Graph {
             flows[id] = Some(input);
         }
 
-        for i in self.paramholder.iter(){
-            let param = self.layers[*i].pull_grad().unwrap();
-            flows[*i] = Some(param[0].clone());
-        }
+        // for i in self.paramholder.iter(){
+        //     let param = self.layers[*i].call(vec![]);
+        //     flows[*i] = Some(param);
+        // }
 
 
         let mut stack: Vec<usize> = vec![self.target];

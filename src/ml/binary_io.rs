@@ -108,3 +108,5 @@ pub const TYPE_QUANTIZED_LINEAR: u8 = 4;
 pub const TYPE_QUANTIZED_MM: u8 = 5;
 pub const TYPE_QUANTIZED_BIAS: u8 = 6;
 pub const TYPE_PARAMETER: u8 = 7;
+/// batch normalization layer
+pub const TYPE_BATCHNORM: u8 = 8;
