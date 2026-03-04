@@ -70,7 +70,7 @@ fn train_mnist() {
             Quantize::new(),
             QuantizedLinear::auto(784, 64),
             Dequantize::new(),
-            // ml::params::BatchNorm::auto(64),
+            ml::params::BatchNorm::auto(64),
             Quantize::new(),
             // Dequantize::new(),
             QReLU::new(),

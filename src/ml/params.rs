@@ -616,6 +616,7 @@ pub struct BatchNorm{
     pub beta: Option<Tensor>,        // shift parameter
     pub gamma_grad: Option<Tensor>,  // gradient for gamma
     pub beta_grad: Option<Tensor>,   // gradient for beta
+    pub momentum: f32,
     is_train: bool,
 }
 
@@ -629,6 +630,7 @@ impl BatchNorm{
             beta: None,
             gamma_grad: None,
             beta_grad: None,
+            momentum: 0.99,
             is_train: false,
         }
     }
@@ -665,6 +667,11 @@ impl Node for BatchNorm{
         for i in 0..features {
             mu[i] /= batch as f32;
         }
+
+        for (m, m_) in self.mu.as_mut().unwrap().f32_data_mut().iter_mut().zip(mu.iter()){
+            *m = *m * self.momentum + (1.0 - self.momentum) * m_;
+        }
+
         let mut delta = vec![0.0; features];
         for b in 0..batch {
             let base = b * features;
@@ -675,6 +682,10 @@ impl Node for BatchNorm{
         }
         for i in 0..features {
             delta[i] = (delta[i] / batch as f32 + self.eps).sqrt();
+        }
+
+        for (d, d_) in self.delta.as_mut().unwrap().f32_data_mut().iter_mut().zip(delta.iter()){
+            *d = *d * self.momentum + d_ * (1.0 - self.momentum);
         }
 
         // compute gradients for gamma and beta
@@ -806,6 +817,7 @@ impl Node for BatchNorm{
             let mu = mu.as_f32_slice();
             let delta = self.delta.as_ref().expect("BatchNorm missing delta for inference");
             let delta = delta.as_f32_slice();
+
 
             for b in 0..batch {
                 let base = b * features;
