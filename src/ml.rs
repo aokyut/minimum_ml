@@ -32,7 +32,7 @@ macro_rules! sequential {
         let g = &mut $graph;
         let mut last_id = $input;
         $(
-            last_id = g.add_layer(vec![last_id], Box::new($node));
+            last_id = g.add_layer(vec![last_id], $node);
         )*
         last_id
     }};
@@ -709,9 +709,9 @@ impl Graph {
         id
     }
 
-    pub fn add_layer(&mut self, inputs: Vec<usize>, node: Box<dyn Node>) -> usize {
+    pub fn add_layer(&mut self, inputs: Vec<usize>, node: impl Node + 'static) -> usize{
         let has_param = node.has_params();
-        self.layers.push(node);
+        self.layers.push(Box::new(node));
         self.flows.push(None);
         self.backflows.push(None);
 

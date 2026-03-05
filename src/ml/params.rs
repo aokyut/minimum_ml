@@ -713,6 +713,7 @@ impl Node for BatchNorm{
                 self.gamma_grad = Some(Tensor::new(dgamma.clone(), vec![features]));
             }
         }
+
         if self.beta.is_some() {
             if let Some(b_grad) = self.beta_grad.as_mut() {
                 let bdat = b_grad.f32_data_mut();

@@ -82,7 +82,7 @@ fn train_mnist() {
     );
 
     let target = g.push_placeholder();
-    let loss = g.add_layer(vec![dequantized, target], Box::new(ml::funcs::CrossEntropyLoss::new()));
+    let loss = g.add_layer(vec![dequantized, target], ml::funcs::CrossEntropyLoss::new());
 
     g.set_train_mode();
     g.set_target(loss);
@@ -263,7 +263,7 @@ fn train_ordinal_model() {
     let param_tensor = Tensor::ones(vec![1, 16]);
     let param = params::Parameter::new(param_tensor);
     let param = g.add_parameter(param);
-    let th = g.add_layer(vec![param], Box::new(funcs::CumlativeSum::new(1)));
+    let th = g.add_layer(vec![param], funcs::CumlativeSum::new(1));
     let th = sequential!{
         g, param,
         [
@@ -271,13 +271,13 @@ fn train_ordinal_model() {
             funcs::SoftPlus::new(),
         ]
     };
-    let diff = g.add_layer(vec![output, th], Box::new(funcs::Sub::new()));
-    let probs = g.add_layer(vec![diff], Box::new(funcs::Sigmoid::new(1.0)));
+    let diff = g.add_layer(vec![output, th], funcs::Sub::new());
+    let probs = g.add_layer(vec![diff], funcs::Sigmoid::new(1.0));
 
-    let bce = g.add_layer(vec![probs, target], Box::new(funcs::BinaryCrossEntropy::new()));
-    let bce_masked = g.add_layer(vec![bce, target_mask], Box::new(funcs::Mul::new()));
-    let sum = g.add_layer(vec![bce_masked], Box::new(funcs::Sum::new(Some(1), false)));
-    let loss = g.add_layer(vec![sum], Box::new(funcs::Mean::new(None, false)));
+    let bce = g.add_layer(vec![probs, target], funcs::BinaryCrossEntropy::new());
+    let bce_masked = g.add_layer(vec![bce, target_mask], funcs::Mul::new());
+    let sum = g.add_layer(vec![bce_masked], funcs::Sum::new(Some(1), false));
+    let loss = g.add_layer(vec![sum], funcs::Mean::new(None, false));
 
     g.set_target(loss);
     g.set_train_mode();
