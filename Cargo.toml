@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "stackable_derive"]
+members = [".", "parallelize", "stackable_derive"]
 
 [package]
 name = "minimum_ml"
@@ -16,12 +16,14 @@ documentation = "https://docs.rs/minimum_ml"
 default = ["logging"]
 # logging uses custom implementation (std only)
 logging = []
-full = ["logging"]
+parallel = []
+full = ["logging", "parallel"]
 
 [dependencies]
 # Core dependencies only
 getrandom = "0.2"
 stackable_derive = { version = "0.1.0", path = "./stackable_derive" }
+parallelize = { path = "./parallelize" }
 
 # Optional dependencies
 # No external logging dependencies!
