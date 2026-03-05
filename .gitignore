@@ -1,0 +1,11 @@
+/target
+*.swp
+mnist_train.txt
+mnist_test.txt
+out
+runs
+model
+*.log
+MNIST_test.txt
+MNIST_train.txt
+mise.toml

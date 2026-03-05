@@ -1,0 +1,30 @@
+[workspace]
+members = [".", "stackable_derive"]
+
+[package]
+name = "minimum_ml"
+version = "0.1.9"
+edition = "2024"
+license = "MIT"
+authors = ["aokyut <epaperamic@gmail.com>"]
+description = "Experimental Machine Learning Library"
+repository = "https://github.com/aokyut/minimum_ml"
+homepage = "https://github.com/aokyut/minimum_ml"
+documentation = "https://docs.rs/minimum_ml"
+
+[features]
+default = ["logging"]
+# logging uses custom implementation (std only)
+logging = []
+full = ["logging"]
+
+[dependencies]
+# Core dependencies only
+getrandom = "0.2"
+stackable_derive = { version = "0.1.0", path = "./stackable_derive" }
+
+# Optional dependencies
+# No external logging dependencies!
+
+[package.metadata.docs.rs]
+all-features = true
