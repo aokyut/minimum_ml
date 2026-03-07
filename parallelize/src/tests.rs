@@ -1,4 +1,4 @@
-use crate::thread_pool::{self, tiny};
+use crate::thread_pool::{self, tiny::{self, TINY_THREAD_POOL, TinyThreadPool}};
 use std::time::Instant;
 
 #[test]
@@ -8,11 +8,11 @@ fn bench_thread_pool(){
     let size = 1000000;
     crate::set_thread_size(16);
     let mut acums = vec![0; 12];
-    let chunk_sizes: Vec<_> = (8..16).map(|a|1 << a).collect();
+    let chunk_sizes: Vec<_> = (8..12).map(|a|1 << a).collect();
     let mut acum = 0;
     let f = |a: &f32|{
         let mut x = *a;
-        for _ in 0..1 { // 負荷を増やす
+        for _ in 0..10 { // 負荷を増やす
             x = 1.0 / (2.0 + x.sin());
         }
         x
@@ -32,21 +32,24 @@ fn bench_thread_pool(){
                 *chunk_size
             );
             let time = now.elapsed().as_nanos();
+            println!("{}", black_box(out[0])); 
             acums[i] += time;
         }
         
         let v: Vec<_> = (0..size).map(|a|a as f32).collect();
-        let mut out = vec![0.0; size];
+        let mut out: Vec<f32> = vec![0.0; size];
 
         let t = Instant::now();
-        for i in 0..size{
-            out[i] = f(black_box(&v[i]));
+        for (o, i) in out.iter_mut().zip(v.iter()){
+            *o = f(i)
         }
         let time = t.elapsed().as_nanos();
         println!("{}", out[0]);
         // println!("{:#?}", out);
         acum += time;
     }
+
+    println!("{}", TINY_THREAD_POOL.workers.len());
 
     let single = acum/n;
     println!("[single]time:{}", acum / n);

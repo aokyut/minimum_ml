@@ -29,7 +29,7 @@ pub fn setup(){
 }
 
 pub struct TinyThreadPool{
-    workers: Vec<thread::JoinHandle<()>>,
+    pub workers: Vec<thread::JoinHandle<()>>,
     sender: mpsc::Sender<Job>,
     sent: Arc<AtomicUsize>,
     completed: Arc<AtomicUsize>,
